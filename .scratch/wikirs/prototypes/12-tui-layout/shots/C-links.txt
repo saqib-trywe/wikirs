@@ -1,0 +1,36 @@
+ wikirs   Engineering / Rust / Async notes   [C · Pager  F2 next]
+                 ┌ Async notes ─────────────────────────────────────────────────────────────────────────────────┐
+                 │ASYNC NOTES                                                                                   │
+                 │                                                                                              │
+                 │Pinning is the hard part. Compare with [1]eng/rust/error-handling.                            │
+                 │                                                                                              │
+                 │Executors                                                                                     │
+                 │                                                                                              │
+                 │  • tokio                                                                                     │
+                 │  • smol                                                                                      │
+                 │                                                                                              │
+                 │Cancellation                                                                                  │
+                 │                                                                                              │
+                 │Drop is cancellation. #lang/rust                                                              │
+                 │                                                                                              │
+                 │[image: async-notes/diagram.png]  (o to open externally)                                      │
+                 │                                                                                              │
+                 │                                                                                              │
+                 │                                                                                              │
+                 │                                                                                              │
+                 │                                                                                              │
+                 │                                                                                              │
+                 │                                                                                              │
+                 │                                                                                              │
+                 │                                                                                              │
+                 │                                                                                              │
+                 │                                                                                              │
+                 │                                                                                              │
+                 │                                                                                              │
+                 │                                                                                              │
+                 │                                                                                              │
+                 │                                                                                              │
+                 │                                                                                              │
+                 │                                                                                              │
+                 └──────────────────────────────────────────────────────────────────────────────────────────────┘
+ 3 backlinks  1-9 follow link  Space/b page  e edit  E $EDITOR  B backlinks  o open  : cmd  ^k ops  X ext-edit  q

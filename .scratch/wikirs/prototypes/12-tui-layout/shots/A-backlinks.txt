@@ -1,0 +1,36 @@
+ wikirs   Engineering / Rust / Async notes   [A · Columns  F2 next]
+┌ Pages ───────────────────┐┌ Async notes ─────────────────────────────────────────────────────┐┌────────────────────────────────┐
+│Engineering               ││ASYNC NOTES                                                       ││BACKLINKS                       │
+│  Rust                    ││      ┌ Backlinks (Enter open) ──────────────────────────────────┐││  Inbox                         │
+│    Async notes           ││Pinnin│Inbox  ·  inbox                                           │││  Rust                          │
+│    Error handling        ││      │Rust  ·  eng/rust                                         │││  wikirs design                 │
+│  wikirs ·                ││Execut│wikirs design  ·  eng/wikirs/design                       │││                                │
+│    wikirs design         ││      │                                                          │││LINKS                           │
+│Inbox                     ││  • to│                                                          │││  eng/rust/error-handling       │
+│personal ·                ││  • sm│                                                          │││                                │
+│  Reading list            ││      │                                                          │││OUTLINE                         │
+│  recipes ·               ││Cancel│                                                          │││  Async notes                   │
+│    Bread                 ││      └──────────────────────────────────────────────────────────┘││    Executors                   │
+│                          ││Drop is cancellation. #lang/rust                                  ││    Cancellation                │
+│                          ││                                                                  ││                                │
+│                          ││[image: async-notes/diagram.png]  (o to open externally)          ││TAGS                            │
+│                          ││                                                                  ││  #lang/rust/async              │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+└──────────────────────────┘└──────────────────────────────────────────────────────────────────┘└────────────────────────────────┘
+ 3 backlinks  j/k move  Enter open  Tab panel  e edit  E $EDITOR  b backlinks  o open  : cmd  ^k ops  X ext-edit  q

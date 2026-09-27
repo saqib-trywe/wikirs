@@ -1,0 +1,36 @@
+ wikirs   Engineering / Rust / Async notes   [A · Columns  F2 next]
+┌ Pages ───────────────────┐┌ Async notes ─────────────────────────────────────────────────────┐┌────────────────────────────────┐
+│Engineering               ││ASYNC NOTES                                                       ││BACKLINKS                       │
+│  Rust                    ││                                                                  ││  Inbox                         │
+│    Async notes           ││Pinning is the hard part. Compare with eng/rust/error-handling.   ││  Rust                          │
+│    Error handling        ││                                                                  ││  wikirs design                 │
+│  wikirs ·                ││Executors                                                         ││                                │
+│    wikirs design         ││                                                                  ││LINKS                           │
+│Inbox                     ││  • tokio                                                         ││  eng/rust/error-handling       │
+│personal ·                ││  • smol                                                          ││                                │
+│  Reading list            ││                                                                  ││OUTLINE                         │
+│  recipes ·               ││Cancellation                                                      ││  Async notes                   │
+│    Bread                 ││                                                                  ││    Executors                   │
+│                          ││Drop is cancellation. #lang/rust                                  ││    Cancellation                │
+│                          ││                                                                  ││                                │
+│                          ││[image: async-notes/diagram.png]  (o to open externally)          ││TAGS                            │
+│                          ││                                                                  ││  #lang/rust/async              │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+└──────────────────────────┘└──────────────────────────────────────────────────────────────────┘└────────────────────────────────┘
+:move_page eng/rust/async-notes eng/rust/async --dry-run█

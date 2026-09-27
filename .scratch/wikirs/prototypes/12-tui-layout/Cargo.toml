@@ -1,0 +1,13 @@
+# PROTOTYPE, throwaway. Answers "what should the wikirs TUI look like?" (ticket 12).
+# Standalone package (own [workspace]) so it never touches the real wikirs build.
+[package]
+name = "wikirs-tui-prototype"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+ratatui = "0.30"
+ratatui-textarea = "0.9"

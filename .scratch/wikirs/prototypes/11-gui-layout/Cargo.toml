@@ -1,0 +1,17 @@
+# PROTOTYPE — throwaway. Answers "what should the wikirs GUI look like?" (ticket 11).
+# Standalone package (own [workspace]) so it never touches the real wikirs build.
+[package]
+name = "wikirs-gui-prototype"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+gpui-kit = { version = "=0.6.6", features = ["tree-sitter-markdown", "tree-sitter-markdown-inline"] }
+lsp-types = { version = "0.97", features = ["proposed"] }
+anyhow = "1"
+
+[profile.dev.package."*"]
+opt-level = 2

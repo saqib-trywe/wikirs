@@ -1,0 +1,36 @@
+ wikirs   Engineering / Rust / Async notes   [B · Miller  F2 next]
+┌ ‹ h ─────────────┐┌ eng/rust (j/k) ────────────┐┌ Async notes ─────────────────────────────────────────────────────────────────┐
+│Rust  ›           ││Async notes                 ││ASYNC NOTES                                                                   │
+│wikirs ·  ›       ││Error handling              ││                                                                              │
+│                  ││                            ││Pinning is the hard part. Compare with eng/rust/error-handling.               │
+│                  ││                            ││                                                                              │
+│                  ││                            ││Executors                                                                     │
+│                  ││                            ││                                                                              │
+│                  ││                            ││  • tokio                                                                     │
+│                  ││                            ││  • smol                                                                      │
+│                  ││                            ││                                                                              │
+│                  ││                            ││Cancellation                                                                  │
+│                  ││                            ││                                                                              │
+│                  ││                            ││Drop is cancellation. #lang/rust                                              │
+│                  ││                            ││                                                                              │
+│                  ││                            ││[image: async-notes/diagram.png]  (o to open externally)                      │
+│                  ││                            ││                                                                              │
+│                  ││                            ││                                                                              │
+│                  ││                            ││                                                                              │
+│                  ││                            ││                                                                              │
+│                  ││                            ││                                                                              │
+│                  ││                            ││                                                                              │
+│                  ││                            ││                                                                              │
+│                  ││                            ││                                                                              │
+│                  ││                            ││                                                                              │
+│                  ││                            ││                                                                              │
+│                  ││                            ││                                                                              │
+│                  ││                            ││                                                                              │
+│                  ││                            ││                                                                              │
+│                  ││                            │└──────────────────────────────────────────────────────────────────────────────┘
+│                  ││                            │────────────────────────────────────────────────────────────────────────────────
+│                  ││                            │Backlinks: Inbox · Rust · wikirs design
+│                  ││                            │Children (l):
+│                  ││                            │Tab cycles Links in the Page, Enter follows
+└──────────────────┘└────────────────────────────┘
+ 3 backlinks  h/l up/down hierarchy  j/k siblings  Tab link  Enter follow  e edit  E $EDITOR  o open  : cmd  ^k ops  X  q

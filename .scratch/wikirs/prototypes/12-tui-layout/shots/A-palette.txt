@@ -1,0 +1,36 @@
+ wikirs   Engineering / Rust / Async notes   [A · Columns  F2 next]
+┌ Pages ───────────────────┐┌ Async notes ─────────────────────────────────────────────────────┐┌────────────────────────────────┐
+│Engineering               ││ASYNC NOTES                                                       ││BACKLINKS                       │
+│  Rust                  ┌ Operations (all 32, from the registry) ──────────────────────────────────────┐                        │
+│    Async notes         │page█                                                                         │                        │
+│    Error handling      └──────────────────────────────────────────────────────────────────────────────┘ design                 │
+│  wikirs ·              ┌──────────────────────────────────────────────────────────────────────────────┐                        │
+│    wikirs design       │get_page          query        page                                           │                        │
+│Inbox                   │list_pages        query        filter?, sort?, limit?                         │st/error-handling       │
+│personal ·              │create_page       mutation     path, content?, tags?                          │                        │
+│  Reading list          │write_page        mutation     page, content, base_version?                   │                        │
+│  recipes ·             │edit_page         mutation     page, edits, base_version?                     │notes                   │
+│    Bread               │set_page_meta     mutation     page, meta                                     │utors                   │
+│                        │move_page         mutation     from, to                                       │ellation                │
+│                        │delete_page       mutation     page, recursive?                               │                        │
+│                        │reorder_page      mutation     page, before|after                             │                        │
+│                        │tag_page          mutation     page, tags                                     │rust/async              │
+│                        │untag_page        mutation     page, tags                                     │                        │
+│                        │                                                                              │                        │
+│                        │                                                                              │                        │
+│                        │                                                                              │                        │
+│                        │                                                                              │                        │
+│                        │                                                                              │                        │
+│                        │                                                                              │                        │
+│                        └──────────────────────────────────────────────────────────────────────────────┘                        │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+└──────────────────────────┘└──────────────────────────────────────────────────────────────────┘└────────────────────────────────┘
+ 3 backlinks  j/k move  Enter open  Tab panel  e edit  E $EDITOR  b backlinks  o open  : cmd  ^k ops  X ext-edit  q

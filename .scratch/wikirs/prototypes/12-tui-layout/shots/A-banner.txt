@@ -1,0 +1,36 @@
+ wikirs   Engineering / Rust / Async notes  ● unsaved   [A · Columns  F2 next]
+ CHANGED ON DISK while you have unsaved edits:  (Esc, then)  [r] Reload   [m] Keep mine (overwrite)   [d] Compare
+┌ Pages ───────────────────┐┌ Async notes — EDIT (ctrl-s save, Esc done) ──────────────────────┐┌────────────────────────────────┐
+│Engineering               ││typing… ---                                                       ││BACKLINKS                       │
+│  Rust                    ││tags: [lang/rust/async]                                           ││  Inbox                         │
+│    Async notes           ││---                                                               ││  Rust                          │
+│    Error handling        ││# Async notes                                                     ││  wikirs design                 │
+│  wikirs ·                ││                                                                  ││                                │
+│    wikirs design         ││Pinning is the hard part. Compare with [[eng/rust/error-handling]]││LINKS                           │
+│Inbox                     ││                                                                  ││  eng/rust/error-handling       │
+│personal ·                ││## Executors                                                      ││                                │
+│  Reading list            ││                                                                  ││OUTLINE                         │
+│  recipes ·               ││- tokio                                                           ││  Async notes                   │
+│    Bread                 ││- smol                                                            ││    Executors                   │
+│                          ││                                                                  ││    Cancellation                │
+│                          ││## Cancellation                                                   ││                                │
+│                          ││                                                                  ││TAGS                            │
+│                          ││Drop is cancellation. #lang/rust                                  ││  #lang/rust/async              │
+│                          ││                                                                  ││                                │
+│                          ││![diagram](async-notes/diagram.png)                               ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+│                          ││                                                                  ││                                │
+└──────────────────────────┘└──────────────────────────────────────────────────────────────────┘└────────────────────────────────┘
+ -- EDIT --   ctrl-s save   Esc done   E: open in $EDITOR instead
