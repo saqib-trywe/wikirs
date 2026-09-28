@@ -29,7 +29,7 @@ Moving the Wiki folder changes the key, so the Index is rebuilt (~1 s). Stale ca
   - WAL, `synchronous=NORMAL`, `busy_timeout=5s`
   - `BEGIN IMMEDIATE` for writes
   - one connection per `Wiki` handle
-- **Full-text:** an FTS5 table with external content, so bodies aren't duplicated. The tokenizer is `unicode61 remove_diacritics 2` with no stemming. `search.stemming = "english"` in `config.toml` switches to `porter`, which triggers a rebuild.
+- **Full-text:** page text is stored exactly once, in the FTS5 table (no separate body column), so the Index holds one copy of the Wiki's text and snippets still work. The tokenizer is `unicode61 remove_diacritics 2` with no stemming. `search.stemming = "english"` in `config.toml` switches to `porter`, which triggers a rebuild.
 - **What's stored per file:** size, mtime and content hash, plus the Index's `index_schema`, `parser_version` and `generation`.
 
 ## Freshness
@@ -52,7 +52,9 @@ A full rebuild happens only when:
 - `index_schema` or `parser_version` differs from the binary's (the newer binary rebuilds)
 - `rebuild_index` is called
 
-A rebuild writes a new DB next to the old one and renames it into place. It bumps `generation`, and each process reopens its connection when it sees the new generation.
+A rebuild runs inside one `BEGIN IMMEDIATE` transaction: it empties the tables, bumps `generation` and re-indexes. Other processes keep reading the old contents until it commits. (Swapping in a new database file by rename was rejected: with WAL, a renamed-in file can be paired with the old `-wal` file that other processes still have open.)
+
+Corruption is detected when SQLite reports it, not by an integrity check on every open, which would add a full database scan to every CLI call. A schema or parser-version mismatch drops and recreates the tables inside a transaction.
 
 ## Watcher
 

@@ -122,7 +122,7 @@ pub fn mutate<T>(
     plan: impl FnOnce(&mut Tx) -> Result<T>,
 ) -> Result<(Plan, T)> {
     let _lock = wiki.lock_writes()?;
-    recover(wiki)?;
+    recover(wiki.root(), wiki.cache_dir())?;
 
     let mut tx = Tx {
         wiki,
@@ -164,15 +164,22 @@ pub fn mutate<T>(
         crash_hook(applied);
         entry
             .edit
-            .apply(wiki)
+            .apply(wiki.root())
             .map_err(|e| Error::io(Some(entry.edit.path()), &e))?;
     }
-    Journal::remove(wiki)?;
+    Journal::remove(wiki.cache_dir())?;
+    // The Index is a cache: if this fails, the next reconcile repairs it.
+    let touched: Vec<&str> = journal.entries.iter().map(|e| e.edit.path()).collect();
+    let _ = wiki.index().refresh(wiki.root(), &touched);
     Ok((plan, value))
 }
 
 fn current_version(wiki: &Wiki, rel: &str) -> Option<String> {
-    fs::read(wiki.root().join(rel)).ok().map(|b| version_of(&b))
+    version_at(wiki.root(), rel)
+}
+
+fn version_at(root: &Path, rel: &str) -> Option<String> {
+    fs::read(root.join(rel)).ok().map(|b| version_of(&b))
 }
 
 #[cfg(feature = "test-hooks")]
@@ -201,8 +208,8 @@ impl Edit {
         }
     }
 
-    fn apply(&self, wiki: &Wiki) -> std::io::Result<()> {
-        let target = wiki.root().join(self.path());
+    fn apply(&self, root: &Path) -> std::io::Result<()> {
+        let target = root.join(self.path());
         let before = match fs::read_to_string(&target) {
             Ok(s) => Some(s),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
@@ -260,7 +267,7 @@ struct JournalEntry {
 
 /// An edit from a crashed Plan that recovery left alone because its file had
 /// changed in the meantime. Reported by `index_status` and `check`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct UnrecoveredEdit {
     pub path: String,
     pub edit: Edit,
@@ -288,17 +295,18 @@ impl Journal {
         Ok(Self { entries })
     }
 
-    fn path(wiki: &Wiki) -> PathBuf {
-        wiki.cache_dir().join("journal.json")
+    fn path(cache_dir: &Path) -> PathBuf {
+        cache_dir.join("journal.json")
     }
 
     fn write(&self, wiki: &Wiki) -> Result<()> {
         let bytes = serde_json::to_vec(self).map_err(|e| Error::internal(e.to_string()))?;
-        atomic_write(&Self::path(wiki), &bytes).map_err(|e| Error::io(Some("journal.json"), &e))
+        atomic_write(&Self::path(wiki.cache_dir()), &bytes)
+            .map_err(|e| Error::io(Some("journal.json"), &e))
     }
 
-    fn remove(wiki: &Wiki) -> Result<()> {
-        match fs::remove_file(Self::path(wiki)) {
+    fn remove(cache_dir: &Path) -> Result<()> {
+        match fs::remove_file(Self::path(cache_dir)) {
             Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
                 Err(Error::io(Some("journal.json"), &e))
             }
@@ -308,22 +316,22 @@ impl Journal {
 }
 
 /// Finishes a crashed Plan, if any. Caller holds the write lock.
-fn recover(wiki: &Wiki) -> Result<()> {
-    let Ok(bytes) = fs::read(Journal::path(wiki)) else {
+fn recover(root: &Path, cache_dir: &Path) -> Result<()> {
+    let Ok(bytes) = fs::read(Journal::path(cache_dir)) else {
         return Ok(());
     };
     let journal: Journal = serde_json::from_slice(&bytes)
         .map_err(|e| Error::internal(format!("unreadable journal: {e}")))?;
     let mut unrecovered = Vec::new();
     for entry in &journal.entries {
-        let current = current_version(wiki, entry.edit.path());
+        let current = version_at(root, entry.edit.path());
         if current.as_deref() == Some(entry.after.as_str()) {
             continue; // already applied
         }
         if current == entry.before {
             entry
                 .edit
-                .apply(wiki)
+                .apply(root)
                 .map_err(|e| Error::io(Some(entry.edit.path()), &e))?;
         } else {
             unrecovered.push(UnrecoveredEdit {
@@ -333,33 +341,37 @@ fn recover(wiki: &Wiki) -> Result<()> {
         }
     }
     if !unrecovered.is_empty() {
-        let mut all = unrecovered_edits(wiki);
+        let mut all = read_unrecovered(cache_dir);
         all.extend(unrecovered);
         let bytes = serde_json::to_vec_pretty(&all).map_err(|e| Error::internal(e.to_string()))?;
-        atomic_write(&wiki.cache_dir().join("unrecovered.json"), &bytes)
+        atomic_write(&cache_dir.join("unrecovered.json"), &bytes)
             .map_err(|e| Error::io(Some("unrecovered.json"), &e))?;
     }
-    Journal::remove(wiki)
+    Journal::remove(cache_dir)
 }
 
 /// Recovery "at open": only when a journal exists, so ordinary opens take no lock.
-pub(crate) fn recover_at_open(wiki: &Wiki) -> Result<()> {
-    if !Journal::path(wiki).exists() {
+pub(crate) fn recover_at_open(root: &Path, cache_dir: &Path) -> Result<()> {
+    if !Journal::path(cache_dir).exists() {
         return Ok(());
     }
-    match wiki.lock_writes() {
-        Ok(_lock) => recover(wiki),
+    match crate::wiki::lock_writes(root, cache_dir) {
+        Ok(_lock) => recover(root, cache_dir),
         // Another process holds the lock and will recover it itself.
         Err(e) if e.kind == crate::ErrorKind::Conflict => Ok(()),
         Err(e) => Err(e),
     }
 }
 
-/// Edits left alone by journal recovery on this machine.
-#[must_use]
-pub fn unrecovered_edits(wiki: &Wiki) -> Vec<UnrecoveredEdit> {
-    fs::read(wiki.cache_dir().join("unrecovered.json"))
+fn read_unrecovered(cache_dir: &Path) -> Vec<UnrecoveredEdit> {
+    fs::read(cache_dir.join("unrecovered.json"))
         .ok()
         .and_then(|b| serde_json::from_slice(&b).ok())
         .unwrap_or_default()
+}
+
+/// Edits left alone by journal recovery on this machine.
+#[must_use]
+pub fn unrecovered_edits(wiki: &Wiki) -> Vec<UnrecoveredEdit> {
+    read_unrecovered(wiki.cache_dir())
 }

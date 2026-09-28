@@ -16,6 +16,7 @@ serde_json.workspace = true
 xxhash-rust.workspace = true
 blake3.workspace = true
 dirs.workspace = true
+rusqlite.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

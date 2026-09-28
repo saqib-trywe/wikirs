@@ -6,11 +6,21 @@ use serde::{Deserialize, Serialize};
 use crate::{
     Error, Kind, Operation, Result, Wiki,
     error::ChangedFile,
-    plan::{Edit, Plan, Splice, Warning, mutate, version_of},
+    index::{Filter, Hit, PageRow, Skipped, Sort},
+    plan::{Edit, Plan, Splice, UnrecoveredEdit, Warning, mutate, unrecovered_edits, version_of},
     wiki::{PagePath, check_case_conflict, slugify},
 };
 
-crate::operations![GetPage, CreatePage, WritePage, EditPage];
+crate::operations![
+    GetPage,
+    ListPages,
+    CreatePage,
+    WritePage,
+    EditPage,
+    Search,
+    IndexStatus,
+    RebuildIndex,
+];
 
 // ------------------------------------------------------------------ get_page
 
@@ -69,7 +79,7 @@ impl Operation for GetPage {
 
 /// First level-1 heading, skipping a leading frontmatter block.
 /// Walking skeleton: frontmatter `title` comes with the frontmatter slice.
-fn title_of(content: &str) -> Option<String> {
+pub(crate) fn title_of(content: &str) -> Option<String> {
     let mut lines = content.lines();
     let mut body: Box<dyn Iterator<Item = &str>> = Box::new(content.lines());
     if content.starts_with("---\n") {
@@ -391,6 +401,216 @@ fn plan_replacements(content: &str, edits: &[Replacement]) -> Result<Vec<Splice>
     Ok(splices)
 }
 
+// ---------------------------------------------------------------- list_pages
+
+pub struct ListPages;
+
+/// List Pages, optionally filtered, sorted and paged.
+#[derive(Debug, Deserialize, JsonSchema)]
+#[cfg_attr(feature = "clap", derive(clap::Args))]
+pub struct ListPagesInput {
+    #[serde(default)]
+    #[cfg_attr(feature = "clap", command(flatten))]
+    pub filter: Filter,
+    /// `path` (default), `title` or `modified` (newest first).
+    #[serde(default)]
+    #[cfg_attr(feature = "clap", arg(long, value_enum, default_value_t))]
+    pub sort: Sort,
+    /// At most this many (default 100).
+    #[cfg_attr(feature = "clap", arg(long))]
+    pub limit: Option<u32>,
+    /// Skip this many first.
+    #[cfg_attr(feature = "clap", arg(long))]
+    pub offset: Option<u32>,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct ListPagesOutput {
+    pub pages: Vec<PageRow>,
+    /// Matching Pages before `limit` / `offset`.
+    pub total: i64,
+}
+
+const DEFAULT_LIMIT: u32 = 100;
+
+impl Operation for ListPages {
+    const NAME: &'static str = "list_pages";
+    const KIND: Kind = Kind::Query;
+    const DESCRIPTION: &'static str =
+        "List Pages, filtered by Space or path prefix, sorted and paged.";
+    type Input = ListPagesInput;
+    type Output = ListPagesOutput;
+
+    fn run(wiki: &Wiki, input: ListPagesInput) -> Result<ListPagesOutput> {
+        let (pages, total) = wiki.index().pages(
+            &input.filter,
+            input.sort,
+            i64::from(input.limit.unwrap_or(DEFAULT_LIMIT)),
+            i64::from(input.offset.unwrap_or(0)),
+        )?;
+        Ok(ListPagesOutput { pages, total })
+    }
+}
+
+// -------------------------------------------------------------------- search
+
+pub struct Search;
+
+/// Full-text search over Pages.
+#[derive(Debug, Deserialize, JsonSchema)]
+#[cfg_attr(feature = "clap", derive(clap::Args))]
+pub struct SearchInput {
+    /// Plain terms (all must match), `"quoted phrases"`, and `prefix*`.
+    pub text: String,
+    #[serde(default)]
+    #[cfg_attr(feature = "clap", command(flatten))]
+    pub filter: Filter,
+    /// At most this many (default 100).
+    #[cfg_attr(feature = "clap", arg(long))]
+    pub limit: Option<u32>,
+    /// Skip this many first.
+    #[cfg_attr(feature = "clap", arg(long))]
+    pub offset: Option<u32>,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct SearchOutput {
+    pub hits: Vec<Hit>,
+    /// Matching Pages before `limit` / `offset`.
+    pub total: i64,
+}
+
+impl Operation for Search {
+    const NAME: &'static str = "search";
+    const KIND: Kind = Kind::Query;
+    const DESCRIPTION: &'static str =
+        "Full-text search: plain terms, \"quoted phrases\" and prefix* (all must match).";
+    type Input = SearchInput;
+    type Output = SearchOutput;
+
+    fn run(wiki: &Wiki, input: SearchInput) -> Result<SearchOutput> {
+        let query = fts_query(&input.text)?;
+        let (hits, total) = wiki.index().search(
+            &query,
+            &input.filter,
+            i64::from(input.limit.unwrap_or(DEFAULT_LIMIT)),
+            i64::from(input.offset.unwrap_or(0)),
+        )?;
+        Ok(SearchOutput { hits, total })
+    }
+}
+
+/// Plain terms and `"phrases"` → an FTS5 query where every term is quoted, so
+/// FTS5's own syntax (`AND`, `NEAR`, `col:`…) is never exposed.
+fn fts_query(text: &str) -> Result<String> {
+    let mut terms = Vec::new();
+    let mut rest = text.trim();
+    while !rest.is_empty() {
+        if let Some(after) = rest.strip_prefix('"') {
+            let end = after.find('"').unwrap_or(after.len());
+            let phrase = after[..end].trim();
+            if !phrase.is_empty() {
+                terms.push(format!("\"{}\"", phrase.replace('"', "")));
+            }
+            rest = after.get(end + 1..).unwrap_or("").trim_start();
+        } else {
+            let end = rest.find(char::is_whitespace).unwrap_or(rest.len());
+            let word = &rest[..end];
+            let (word, prefix) = match word.strip_suffix('*') {
+                Some(w) => (w, true),
+                None => (word, false),
+            };
+            let word = word.replace('"', "");
+            if !word.is_empty() {
+                terms.push(format!("\"{word}\"{}", if prefix { "*" } else { "" }));
+            }
+            rest = rest[end..].trim_start();
+        }
+    }
+    if terms.is_empty() {
+        return Err(Error::invalid_input(Some("text"), "search text is empty"));
+    }
+    Ok(terms.join(" "))
+}
+
+// -------------------------------------------------------------- index_status
+
+pub struct IndexStatus;
+
+/// Report on the Index.
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[cfg_attr(feature = "clap", derive(clap::Args))]
+pub struct IndexStatusInput {}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct IndexStatusOutput {
+    /// The Wiki root this process resolved.
+    pub root: String,
+    /// Per-Wiki cache dir (Index, write lock, journal).
+    pub cache_dir: String,
+    pub pages: i64,
+    pub attachments: i64,
+    /// When the Index last changed, milliseconds since the Unix epoch.
+    pub last_updated: Option<i64>,
+    /// Whether the Index may be behind the files (always false right after open).
+    pub stale: bool,
+    /// File watching in this process: `none` (one-shot) until watchers exist.
+    pub watcher: String,
+    pub skipped: Vec<Skipped>,
+    pub unrecovered_edits: Vec<UnrecoveredEdit>,
+}
+
+impl Operation for IndexStatus {
+    const NAME: &'static str = "index_status";
+    const KIND: Kind = Kind::Query;
+    const DESCRIPTION: &'static str =
+        "Report on the Index: counts, freshness, skipped files, unrecovered edits.";
+    type Input = IndexStatusInput;
+    type Output = IndexStatusOutput;
+
+    fn run(wiki: &Wiki, _input: IndexStatusInput) -> Result<IndexStatusOutput> {
+        status(wiki)
+    }
+}
+
+fn status(wiki: &Wiki) -> Result<IndexStatusOutput> {
+    let index = wiki.index();
+    Ok(IndexStatusOutput {
+        root: wiki.root().display().to_string(),
+        cache_dir: wiki.cache_dir().display().to_string(),
+        pages: index.count("page")?,
+        attachments: index.count("attachment")?,
+        last_updated: index.last_updated()?,
+        stale: false,
+        watcher: "none".into(),
+        skipped: index.skipped()?,
+        unrecovered_edits: unrecovered_edits(wiki),
+    })
+}
+
+// ------------------------------------------------------------- rebuild_index
+
+pub struct RebuildIndex;
+
+/// Drop the Index and rebuild it from the files.
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[cfg_attr(feature = "clap", derive(clap::Args))]
+pub struct RebuildIndexInput {}
+
+impl Operation for RebuildIndex {
+    const NAME: &'static str = "rebuild_index";
+    const KIND: Kind = Kind::Maintenance;
+    const DESCRIPTION: &'static str =
+        "Drop the Index and rebuild it from the files. Changes no Wiki file.";
+    type Input = RebuildIndexInput;
+    type Output = IndexStatusOutput;
+
+    fn run(wiki: &Wiki, _input: RebuildIndexInput) -> Result<IndexStatusOutput> {
+        wiki.index().rebuild(wiki.root())?;
+        status(wiki)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -597,6 +817,113 @@ mod tests {
             (ErrorKind::Conflict, Some("lock_timeout"))
         );
         assert!(started.elapsed() >= std::time::Duration::from_secs(4));
+    }
+
+    #[test]
+    fn search_text_never_exposes_fts_syntax() {
+        assert_eq!(fts_query("tokio  pinning").unwrap(), r#""tokio" "pinning""#);
+        assert_eq!(
+            fts_query(r#""hard part" pin*"#).unwrap(),
+            r#""hard part" "pin"*"#
+        );
+        assert_eq!(
+            fts_query(r#"NEAR(a b) col:x "unclosed"#).unwrap(),
+            r#""NEAR(a" "b)" "col:x" "unclosed""#
+        );
+        assert_eq!(
+            fts_query("  \"\"  ").unwrap_err().kind,
+            ErrorKind::InvalidInput
+        );
+    }
+
+    #[test]
+    fn an_unchanged_wiki_is_not_rewritten_on_open() {
+        let (dir, wiki) = wiki();
+        create(&wiki, "eng/rust", false).unwrap();
+        let before = wiki.index().last_updated().unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        let again = Wiki::open_with_cache(wiki.root(), dir.path().join("cache")).unwrap();
+        assert_eq!(again.index().last_updated().unwrap(), before);
+    }
+
+    /// testing.md: after any mix of mutations and external edits, the
+    /// incrementally maintained Index equals a fresh rebuild.
+    #[test]
+    fn incremental_index_equals_a_rebuild() {
+        let (dir, wiki) = wiki();
+        let reopen = || Wiki::open_with_cache(wiki.root(), dir.path().join("cache")).unwrap();
+        let root = wiki.root().to_path_buf();
+        create(&wiki, "eng/rust", false).unwrap();
+        create(&wiki, "eng/rust/async", false).unwrap();
+        write(&wiki, "# Rust\n\nOwnership and borrowing.\n", None).unwrap();
+        std::fs::write(root.join("eng/rust/async.md"), "# Async\n\nedited in vim\n").unwrap();
+        std::fs::create_dir_all(root.join("personal")).unwrap();
+        std::fs::write(root.join("personal/bread.md"), "flour\n").unwrap();
+        std::fs::write(root.join("eng/diagram.png"), [0u8, 1, 2]).unwrap();
+        std::fs::write(root.join("bad.md"), [0xffu8, 0xfe]).unwrap();
+        let _ = reopen();
+        std::fs::remove_file(root.join("personal/bread.md")).unwrap();
+        edit(&wiki, &[("Ownership", "Lifetimes")], false).unwrap();
+        let incremental = reopen().index().dump().unwrap();
+
+        let rebuilt = reopen();
+        rebuilt.index().rebuild(&root).unwrap();
+        assert_eq!(incremental, rebuilt.index().dump().unwrap());
+        assert!(
+            incremental.iter().any(|r| r.contains("Lifetimes")),
+            "the edit is indexed"
+        );
+        assert!(
+            incremental.iter().any(|r| r.contains("edited in vim")),
+            "the external edit is indexed"
+        );
+        assert!(
+            !incremental.iter().any(|r| r.contains("bread")),
+            "the external delete is indexed"
+        );
+    }
+
+    #[test]
+    fn list_and_search_honour_the_space_filter() {
+        let (_d, wiki) = wiki();
+        for path in ["eng", "eng/rust", "engine", "personal/rust"] {
+            create(&wiki, path, false).unwrap();
+        }
+        let eng = Filter {
+            space: Some("eng".into()),
+            path_prefix: None,
+        };
+        let listed = ListPages::run(
+            &wiki,
+            ListPagesInput {
+                filter: eng.clone(),
+                sort: Sort::Path,
+                limit: None,
+                offset: None,
+            },
+        )
+        .unwrap();
+        let paths: Vec<_> = listed.pages.iter().map(|p| p.path.as_str()).collect();
+        assert_eq!(
+            paths,
+            ["eng", "eng/rust"],
+            "the home Page and its subtree, not `engine`"
+        );
+        let found = Search::run(
+            &wiki,
+            SearchInput {
+                text: "hi".into(),
+                filter: eng,
+                limit: Some(1),
+                offset: None,
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            (found.hits.len(), found.total),
+            (1, 2),
+            "limit pages the hits, total doesn't"
+        );
     }
 
     #[test]

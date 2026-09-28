@@ -3,10 +3,11 @@
 use std::{
     fs::File,
     path::{Path, PathBuf},
+    sync::{Arc, Mutex, MutexGuard},
     time::{Duration, Instant},
 };
 
-use crate::{Error, Result};
+use crate::{Error, Result, index::Index};
 
 /// How long a mutation waits for another process's write lock (ADR 0006).
 const LOCK_TIMEOUT: Duration = Duration::from_secs(5);
@@ -15,6 +16,7 @@ const LOCK_TIMEOUT: Duration = Duration::from_secs(5);
 pub struct Wiki {
     root: PathBuf,
     cache_dir: PathBuf,
+    index: Arc<Mutex<Index>>,
 }
 
 impl Wiki {
@@ -34,9 +36,22 @@ impl Wiki {
             .filter(|p| p.is_dir())
             .ok_or_else(|| Error::not_found("wiki", &given.display().to_string()))?;
         let cache_dir = cache_base.as_ref().join(wiki_key(&root));
-        let wiki = Self { root, cache_dir };
-        crate::plan::recover_at_open(&wiki)?;
-        Ok(wiki)
+        let mut index = Index::open(&cache_dir.join("index.db"))?;
+        crate::plan::recover_at_open(&root, &cache_dir)?;
+        // Every open brings the Index up to date (process-model.md#freshness).
+        index.reconcile(&root)?;
+        Ok(Self {
+            root,
+            cache_dir,
+            index: Arc::new(Mutex::new(index)),
+        })
+    }
+
+    /// The shared Index connection for this handle.
+    pub fn index(&self) -> MutexGuard<'_, Index> {
+        self.index
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     /// Per-Wiki cache dir: Index, write lock, journal (process-model.md).
@@ -48,32 +63,7 @@ impl Wiki {
     /// Takes the Wiki-wide advisory write lock, waiting up to [`LOCK_TIMEOUT`]
     /// for other wikirs processes. Released when the guard drops.
     pub fn lock_writes(&self) -> Result<WriteLock> {
-        std::fs::create_dir_all(&self.cache_dir).map_err(|e| Error::io(Some("cache dir"), &e))?;
-        let root_note = self.cache_dir.join("wiki_root.txt");
-        if !root_note.exists() {
-            let _ = std::fs::write(&root_note, self.root.display().to_string());
-        }
-        let file = File::options()
-            .create(true)
-            .truncate(false)
-            .write(true)
-            .open(self.cache_dir.join("write.lock"))
-            .map_err(|e| Error::io(Some("write.lock"), &e))?;
-        let started = Instant::now();
-        loop {
-            match file.try_lock() {
-                Ok(()) => return Ok(WriteLock { _file: file }),
-                Err(std::fs::TryLockError::WouldBlock) if started.elapsed() < LOCK_TIMEOUT => {
-                    std::thread::sleep(Duration::from_millis(10));
-                }
-                Err(std::fs::TryLockError::WouldBlock) => {
-                    return Err(Error::conflict_lock_timeout());
-                }
-                Err(std::fs::TryLockError::Error(e)) => {
-                    return Err(Error::io(Some("write.lock"), &e));
-                }
-            }
-        }
+        lock_writes(&self.root, &self.cache_dir)
     }
 
     #[must_use]
@@ -85,6 +75,33 @@ impl Wiki {
     #[must_use]
     pub fn page_file(&self, page: &PagePath) -> PathBuf {
         self.root.join(format!("{}.md", page.as_str()))
+    }
+}
+
+/// Takes the write lock of the Wiki at `root` whose cache dir is `cache_dir`
+/// (also used by journal recovery before the `Wiki` handle exists).
+pub(crate) fn lock_writes(root: &Path, cache_dir: &Path) -> Result<WriteLock> {
+    std::fs::create_dir_all(cache_dir).map_err(|e| Error::io(Some("cache dir"), &e))?;
+    let root_note = cache_dir.join("wiki_root.txt");
+    if !root_note.exists() {
+        let _ = std::fs::write(&root_note, root.display().to_string());
+    }
+    let file = File::options()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(cache_dir.join("write.lock"))
+        .map_err(|e| Error::io(Some("write.lock"), &e))?;
+    let started = Instant::now();
+    loop {
+        match file.try_lock() {
+            Ok(()) => return Ok(WriteLock { _file: file }),
+            Err(std::fs::TryLockError::WouldBlock) if started.elapsed() < LOCK_TIMEOUT => {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            Err(std::fs::TryLockError::WouldBlock) => return Err(Error::conflict_lock_timeout()),
+            Err(std::fs::TryLockError::Error(e)) => return Err(Error::io(Some("write.lock"), &e)),
+        }
     }
 }
 

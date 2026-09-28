@@ -52,6 +52,119 @@ expression: "wikirs_core::catalogue()"
       }
     },
     {
+      "description": "List Pages, filtered by Space or path prefix, sorted and paged.",
+      "input_schema": {
+        "$defs": {
+          "Filter": {
+            "description": "Which Pages a query covers (operations.md `Filter`). Tags arrive with the\nmarkdown parser.",
+            "properties": {
+              "path_prefix": {
+                "description": "Only Pages whose Page Path starts with this.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "space": {
+                "description": "Only this Space: its home Page and everything under it.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "type": "object"
+          },
+          "Sort": {
+            "enum": [
+              "path",
+              "title",
+              "modified"
+            ],
+            "type": "string"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "List Pages, optionally filtered, sorted and paged.",
+        "properties": {
+          "filter": {
+            "$ref": "#/$defs/Filter"
+          },
+          "limit": {
+            "description": "At most this many (default 100).",
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "offset": {
+            "description": "Skip this many first.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "sort": {
+            "$ref": "#/$defs/Sort",
+            "description": "`path` (default), `title` or `modified` (newest first)."
+          }
+        },
+        "title": "ListPagesInput",
+        "type": "object"
+      },
+      "kind": "query",
+      "name": "list_pages",
+      "output_schema": {
+        "$defs": {
+          "PageRow": {
+            "properties": {
+              "modified": {
+                "description": "Last modified, milliseconds since the Unix epoch.",
+                "format": "int64",
+                "type": "integer"
+              },
+              "path": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "title",
+              "modified"
+            ],
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "pages": {
+            "items": {
+              "$ref": "#/$defs/PageRow"
+            },
+            "type": "array"
+          },
+          "total": {
+            "description": "Matching Pages before `limit` / `offset`.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "pages",
+          "total"
+        ],
+        "title": "ListPagesOutput",
+        "type": "object"
+      }
+    },
+    {
       "description": "Create a Page at a path, or under a parent from a Title.",
       "input_schema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -628,6 +741,497 @@ expression: "wikirs_core::catalogue()"
           "version"
         ],
         "title": "WriteOutput",
+        "type": "object"
+      }
+    },
+    {
+      "description": "Full-text search: plain terms, \"quoted phrases\" and prefix* (all must match).",
+      "input_schema": {
+        "$defs": {
+          "Filter": {
+            "description": "Which Pages a query covers (operations.md `Filter`). Tags arrive with the\nmarkdown parser.",
+            "properties": {
+              "path_prefix": {
+                "description": "Only Pages whose Page Path starts with this.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "space": {
+                "description": "Only this Space: its home Page and everything under it.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Full-text search over Pages.",
+        "properties": {
+          "filter": {
+            "$ref": "#/$defs/Filter"
+          },
+          "limit": {
+            "description": "At most this many (default 100).",
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "offset": {
+            "description": "Skip this many first.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "text": {
+            "description": "Plain terms (all must match), `\"quoted phrases\"`, and `prefix*`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "SearchInput",
+        "type": "object"
+      },
+      "kind": "query",
+      "name": "search",
+      "output_schema": {
+        "$defs": {
+          "Hit": {
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "score": {
+                "description": "Relevance; higher is better.",
+                "format": "double",
+                "type": "number"
+              },
+              "snippet": {
+                "description": "Matching text with matches wrapped in `**`.",
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "title",
+              "snippet",
+              "score"
+            ],
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "hits": {
+            "items": {
+              "$ref": "#/$defs/Hit"
+            },
+            "type": "array"
+          },
+          "total": {
+            "description": "Matching Pages before `limit` / `offset`.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "hits",
+          "total"
+        ],
+        "title": "SearchOutput",
+        "type": "object"
+      }
+    },
+    {
+      "description": "Report on the Index: counts, freshness, skipped files, unrecovered edits.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Report on the Index.",
+        "title": "IndexStatusInput",
+        "type": "object"
+      },
+      "kind": "query",
+      "name": "index_status",
+      "output_schema": {
+        "$defs": {
+          "Edit": {
+            "description": "One file edit. Paths are relative to the Wiki root.",
+            "oneOf": [
+              {
+                "description": "Create a new file.",
+                "properties": {
+                  "content": {
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "create",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "content"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Splice an existing file. Every byte outside the splices is unchanged.",
+                "properties": {
+                  "base_version": {
+                    "description": "Hash of the file this edit was planned against.",
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "modify",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "splices": {
+                    "description": "Non-overlapping byte ranges of the original file, in order.",
+                    "items": {
+                      "$ref": "#/$defs/Splice"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "base_version",
+                  "splices"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "Skipped": {
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "reason": {
+                "description": "`symlink`, `non_utf8` or `case_clash`.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "reason"
+            ],
+            "type": "object"
+          },
+          "Splice": {
+            "properties": {
+              "new": {
+                "type": "string"
+              },
+              "old": {
+                "type": "string"
+              },
+              "range": {
+                "description": "Byte range `[start, end)` in the original file.",
+                "items": {
+                  "format": "uint",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              }
+            },
+            "required": [
+              "range",
+              "old",
+              "new"
+            ],
+            "type": "object"
+          },
+          "UnrecoveredEdit": {
+            "description": "An edit from a crashed Plan that recovery left alone because its file had\nchanged in the meantime. Reported by `index_status` and `check`.",
+            "properties": {
+              "edit": {
+                "$ref": "#/$defs/Edit"
+              },
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "edit"
+            ],
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "attachments": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "cache_dir": {
+            "description": "Per-Wiki cache dir (Index, write lock, journal).",
+            "type": "string"
+          },
+          "last_updated": {
+            "description": "When the Index last changed, milliseconds since the Unix epoch.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "pages": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "root": {
+            "description": "The Wiki root this process resolved.",
+            "type": "string"
+          },
+          "skipped": {
+            "items": {
+              "$ref": "#/$defs/Skipped"
+            },
+            "type": "array"
+          },
+          "stale": {
+            "description": "Whether the Index may be behind the files (always false right after open).",
+            "type": "boolean"
+          },
+          "unrecovered_edits": {
+            "items": {
+              "$ref": "#/$defs/UnrecoveredEdit"
+            },
+            "type": "array"
+          },
+          "watcher": {
+            "description": "File watching in this process: `none` (one-shot) until watchers exist.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "root",
+          "cache_dir",
+          "pages",
+          "attachments",
+          "stale",
+          "watcher",
+          "skipped",
+          "unrecovered_edits"
+        ],
+        "title": "IndexStatusOutput",
+        "type": "object"
+      }
+    },
+    {
+      "description": "Drop the Index and rebuild it from the files. Changes no Wiki file.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Drop the Index and rebuild it from the files.",
+        "title": "RebuildIndexInput",
+        "type": "object"
+      },
+      "kind": "maintenance",
+      "name": "rebuild_index",
+      "output_schema": {
+        "$defs": {
+          "Edit": {
+            "description": "One file edit. Paths are relative to the Wiki root.",
+            "oneOf": [
+              {
+                "description": "Create a new file.",
+                "properties": {
+                  "content": {
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "create",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "content"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Splice an existing file. Every byte outside the splices is unchanged.",
+                "properties": {
+                  "base_version": {
+                    "description": "Hash of the file this edit was planned against.",
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "modify",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "splices": {
+                    "description": "Non-overlapping byte ranges of the original file, in order.",
+                    "items": {
+                      "$ref": "#/$defs/Splice"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "base_version",
+                  "splices"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "Skipped": {
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "reason": {
+                "description": "`symlink`, `non_utf8` or `case_clash`.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "reason"
+            ],
+            "type": "object"
+          },
+          "Splice": {
+            "properties": {
+              "new": {
+                "type": "string"
+              },
+              "old": {
+                "type": "string"
+              },
+              "range": {
+                "description": "Byte range `[start, end)` in the original file.",
+                "items": {
+                  "format": "uint",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              }
+            },
+            "required": [
+              "range",
+              "old",
+              "new"
+            ],
+            "type": "object"
+          },
+          "UnrecoveredEdit": {
+            "description": "An edit from a crashed Plan that recovery left alone because its file had\nchanged in the meantime. Reported by `index_status` and `check`.",
+            "properties": {
+              "edit": {
+                "$ref": "#/$defs/Edit"
+              },
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "edit"
+            ],
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "attachments": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "cache_dir": {
+            "description": "Per-Wiki cache dir (Index, write lock, journal).",
+            "type": "string"
+          },
+          "last_updated": {
+            "description": "When the Index last changed, milliseconds since the Unix epoch.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "pages": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "root": {
+            "description": "The Wiki root this process resolved.",
+            "type": "string"
+          },
+          "skipped": {
+            "items": {
+              "$ref": "#/$defs/Skipped"
+            },
+            "type": "array"
+          },
+          "stale": {
+            "description": "Whether the Index may be behind the files (always false right after open).",
+            "type": "boolean"
+          },
+          "unrecovered_edits": {
+            "items": {
+              "$ref": "#/$defs/UnrecoveredEdit"
+            },
+            "type": "array"
+          },
+          "watcher": {
+            "description": "File watching in this process: `none` (one-shot) until watchers exist.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "root",
+          "cache_dir",
+          "pages",
+          "attachments",
+          "stale",
+          "watcher",
+          "skipped",
+          "unrecovered_edits"
+        ],
+        "title": "IndexStatusOutput",
         "type": "object"
       }
     }

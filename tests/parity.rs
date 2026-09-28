@@ -185,7 +185,54 @@ fn scenario() -> Vec<Step> {
             input: json!({ "page": "notes" }),
             cli: &["get-page", "notes"],
         },
+        Step {
+            op: "list_pages",
+            input: json!({ "filter": { "space": "eng" }, "sort": "title" }),
+            cli: &["list-pages", "--space", "eng", "--sort", "title"],
+        },
+        Step {
+            op: "search",
+            input: json!({ "text": "v3" }),
+            cli: &["search", "v3"],
+        },
+        Step {
+            op: "search",
+            input: json!({ "text": "   " }),
+            cli: &["search", "   "],
+        },
+        Step {
+            op: "index_status",
+            input: json!({}),
+            cli: &["index-status"],
+        },
+        Step {
+            op: "rebuild_index",
+            input: json!({}),
+            cli: &["rebuild-index"],
+        },
     ]
+}
+
+/// Drops the fields that legitimately differ between runs: each Interface
+/// works on its own temp Wiki (paths) at its own moment (timestamps).
+fn normalize(mut value: Value) -> Value {
+    match &mut value {
+        Value::Object(map) => {
+            for key in ["root", "cache_dir", "last_updated", "modified"] {
+                map.remove(key);
+            }
+            for v in map.values_mut() {
+                *v = normalize(v.take());
+            }
+        }
+        Value::Array(items) => {
+            for v in items {
+                *v = normalize(v.take());
+            }
+        }
+        _ => {}
+    }
+    value
 }
 
 fn outcome(result: wikirs_core::Result<Value>) -> Value {
@@ -266,11 +313,14 @@ async fn mcp_client(wiki: Wiki) -> rmcp::service::RunningService<rmcp::RoleClien
 #[tokio::test(flavor = "multi_thread")]
 async fn every_interface_behaves_identically() {
     let steps = scenario();
-    let core = via_core(&steps);
-    let mcp = via_mcp(&steps).await;
-    let cli = tokio::task::spawn_blocking(move || via_cli(&scenario()))
+    let core: Vec<Value> = via_core(&steps).into_iter().map(normalize).collect();
+    let mcp: Vec<Value> = via_mcp(&steps).await.into_iter().map(normalize).collect();
+    let cli: Vec<Value> = tokio::task::spawn_blocking(move || via_cli(&scenario()))
         .await
-        .unwrap();
+        .unwrap()
+        .into_iter()
+        .map(normalize)
+        .collect();
     for (i, step) in steps.iter().enumerate() {
         assert_eq!(
             cli[i], core[i],
@@ -288,10 +338,19 @@ async fn every_interface_behaves_identically() {
         .iter()
         .filter_map(|v| v["error"]["kind"].as_str())
         .collect();
+    let content = core
+        .iter()
+        .rev()
+        .find_map(|v| v["result"]["content"].as_str())
+        .unwrap();
     assert_eq!(
-        core.last().unwrap()["result"]["content"],
-        "# Notes\n\nv3\n",
+        content, "# Notes\n\nv3\n",
         "writes and edits landed; the dry run didn't"
+    );
+    let status = &core[core.len() - 2]["result"];
+    assert_eq!(
+        (status["pages"].as_i64(), status["attachments"].as_i64()),
+        (Some(2), Some(0))
     );
     assert_eq!(
         kinds,
@@ -302,7 +361,8 @@ async fn every_interface_behaves_identically() {
             "invalid_path",
             "conflict",
             "no_match",
-            "ambiguous_match"
+            "ambiguous_match",
+            "invalid_input"
         ]
     );
 }
