@@ -24,6 +24,9 @@ xxhash-rust = { version = "0.8", features = ["xxh3"] }
 blake3 = "1.8"
 dirs = "7"
 rusqlite = { version = "0.40", features = ["bundled"] }
+pulldown-cmark = { version = "0.13", default-features = false }
+yaml-rust2 = "0.13"
+percent-encoding = "2.3"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

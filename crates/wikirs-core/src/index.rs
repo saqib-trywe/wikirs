@@ -2,8 +2,8 @@
 //! process-model.md). One database per Wiki in its cache dir, shared by every
 //! wikirs process through WAL.
 //!
-//! This slice indexes files, Titles and full text. Links and Tags arrive with
-//! the markdown parser.
+//! Every Page is parsed once, on the way in (ADR 0007): Title, headings, Links
+//! and Tags are stored next to its full text.
 
 use std::{
     collections::{HashMap, HashSet},
@@ -16,12 +16,12 @@ use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use schemars::JsonSchema;
 use serde::Serialize;
 
-use crate::{Error, Result, plan::version_of};
+use crate::{Error, Result, links::normalize_dest, markdown::parse, plan::version_of};
 
 /// Bump when the tables change; a mismatch rebuilds the Index at open.
-const INDEX_SCHEMA: i64 = 1;
+const INDEX_SCHEMA: i64 = 2;
 /// Bump when what's extracted from a file changes (Title rules, parser version).
-const PARSER_VERSION: i64 = 1;
+const PARSER_VERSION: i64 = 2;
 
 pub struct Index {
     conn: Connection,
@@ -92,6 +92,9 @@ impl Index {
                 "DROP TABLE IF EXISTS files;
                  DROP TABLE IF EXISTS pages_fts;
                  DROP TABLE IF EXISTS skipped;
+                 DROP TABLE IF EXISTS links;
+                 DROP TABLE IF EXISTS tags;
+                 DROP TABLE IF EXISTS headings;
                  CREATE TABLE files (
                      path  TEXT PRIMARY KEY,
                      kind  TEXT NOT NULL,      -- 'page' | 'attachment'
@@ -105,7 +108,27 @@ impl Index {
                      path UNINDEXED, title, body,
                      tokenize = 'unicode61 remove_diacritics 2'
                  );
-                 CREATE TABLE skipped (path TEXT PRIMARY KEY, reason TEXT NOT NULL);",
+                 CREATE TABLE skipped (path TEXT PRIMARY KEY, reason TEXT NOT NULL);
+                 -- `dest`: the target as a path from the Wiki root, NULL if it climbs out.
+                 CREATE TABLE links (
+                     src TEXT NOT NULL, start INTEGER NOT NULL, end INTEGER NOT NULL,
+                     raw TEXT NOT NULL, dest TEXT, wiki INTEGER NOT NULL,
+                     embed INTEGER NOT NULL, heading TEXT
+                 );
+                 CREATE INDEX links_src ON links (src);
+                 CREATE INDEX links_dest ON links (lower(dest));
+                 -- `tag` is lowercase (matching ignores case); `raw` is as written.
+                 CREATE TABLE tags (
+                     page TEXT NOT NULL, tag TEXT NOT NULL, raw TEXT NOT NULL,
+                     source TEXT NOT NULL, start INTEGER, end INTEGER
+                 );
+                 CREATE INDEX tags_tag ON tags (tag);
+                 CREATE INDEX tags_page ON tags (page);
+                 CREATE TABLE headings (
+                     page TEXT NOT NULL, level INTEGER NOT NULL, text TEXT NOT NULL,
+                     anchor TEXT NOT NULL, start INTEGER NOT NULL, end INTEGER NOT NULL
+                 );
+                 CREATE INDEX headings_page ON headings (page);",
             )
             .map_err(|e| db_err(&e))?;
             for (key, value) in [
@@ -252,8 +275,11 @@ impl Index {
                 .conn
                 .transaction_with_behavior(TransactionBehavior::Immediate)
                 .map_err(|e| db_err(&e))?;
-            tx.execute_batch("DELETE FROM files; DELETE FROM pages_fts; DELETE FROM skipped;")
-                .map_err(|e| db_err(&e))?;
+            tx.execute_batch(
+                "DELETE FROM files; DELETE FROM pages_fts; DELETE FROM skipped;
+                 DELETE FROM links; DELETE FROM tags; DELETE FROM headings;",
+            )
+            .map_err(|e| db_err(&e))?;
             tx.execute(
                 "UPDATE meta SET value = value + 1 WHERE key = 'generation'",
                 [],
@@ -273,12 +299,21 @@ impl Index {
             "SELECT 'file', path, kind, hash, coalesce(title, '') FROM files ORDER BY path",
             "SELECT 'fts', path, title, body, '' FROM pages_fts ORDER BY path",
             "SELECT 'skipped', path, reason, '', '' FROM skipped ORDER BY path",
+            "SELECT 'link', src, start || '-' || end, coalesce(dest, '-'), raw FROM links ORDER BY src, start",
+            "SELECT 'tag', page, tag, source, coalesce(start, '-') FROM tags ORDER BY page, tag, source, start",
+            "SELECT 'heading', page, start, level, anchor FROM headings ORDER BY page, start",
         ] {
             let mut stmt = self.conn.prepare(sql).map_err(|e| db_err(&e))?;
             let found = stmt
                 .query_map([], |r| {
                     Ok((0..5)
-                        .map(|i| r.get::<_, String>(i))
+                        .map(|i| {
+                            r.get::<_, rusqlite::types::Value>(i).map(|v| match v {
+                                rusqlite::types::Value::Integer(n) => n.to_string(),
+                                rusqlite::types::Value::Text(t) => t,
+                                other => format!("{other:?}"),
+                            })
+                        })
                         .collect::<rusqlite::Result<Vec<_>>>()?
                         .join("|"))
                 })
@@ -288,6 +323,90 @@ impl Index {
             rows.extend(found);
         }
         Ok(rows)
+    }
+
+    pub(crate) fn conn(&self) -> &Connection {
+        &self.conn
+    }
+
+    /// Stored Links from Pages within `scope`.
+    pub(crate) fn stored_links(&self, scope: &Scope) -> Result<Vec<StoredLink>> {
+        let (cond, args) = scope.sql("src");
+        let mut stmt = self
+            .conn
+            .prepare(&format!(
+                "SELECT src, start, end, raw, dest, wiki, heading FROM links WHERE {cond} ORDER BY src, start"
+            ))
+            .map_err(|e| db_err(&e))?;
+        stmt.query_map(rusqlite::params_from_iter(&args), StoredLink::from_row)
+            .map_err(|e| db_err(&e))?
+            .collect::<rusqlite::Result<_>>()
+            .map_err(|e| db_err(&e))
+    }
+
+    /// Links whose stored target could name `target` (the caller resolves them).
+    pub(crate) fn links_to(&self, target: &str) -> Result<Vec<StoredLink>> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT src, start, end, raw, dest, wiki, heading FROM links
+                 WHERE lower(dest) IN (lower(?1), lower(?1 || '.md')) ORDER BY src, start",
+            )
+            .map_err(|e| db_err(&e))?;
+        stmt.query_map([target], StoredLink::from_row)
+            .map_err(|e| db_err(&e))?
+            .collect::<rusqlite::Result<_>>()
+            .map_err(|e| db_err(&e))
+    }
+
+    /// Distinct `(page file, lowercase tag)` pairs within `scope`.
+    pub(crate) fn page_tags(&self, scope: &Scope) -> Result<Vec<(String, String)>> {
+        let (cond, args) = scope.sql("page");
+        let mut stmt = self
+            .conn
+            .prepare(&format!(
+                "SELECT DISTINCT page, tag FROM tags WHERE {cond} ORDER BY tag, page"
+            ))
+            .map_err(|e| db_err(&e))?;
+        stmt.query_map(rusqlite::params_from_iter(&args), |r| {
+            Ok((r.get(0)?, r.get(1)?))
+        })
+        .map_err(|e| db_err(&e))?
+        .collect::<rusqlite::Result<_>>()
+        .map_err(|e| db_err(&e))
+    }
+
+    /// Tags written in mixed case within `scope`: `(page file, raw, range)`.
+    pub(crate) fn mixed_case_tags(&self, scope: &Scope) -> Result<Vec<MixedCaseTag>> {
+        let (cond, args) = scope.sql("page");
+        let mut stmt = self
+            .conn
+            .prepare(&format!(
+                "SELECT page, raw, start, end FROM tags WHERE raw <> tag AND {cond} ORDER BY page, start"
+            ))
+            .map_err(|e| db_err(&e))?;
+        stmt.query_map(rusqlite::params_from_iter(&args), |r| {
+            let range = match (r.get::<_, Option<i64>>(2)?, r.get::<_, Option<i64>>(3)?) {
+                (Some(a), Some(b)) => Some([a, b]),
+                _ => None,
+            };
+            Ok((r.get(0)?, r.get(1)?, range))
+        })
+        .map_err(|e| db_err(&e))?
+        .collect::<rusqlite::Result<_>>()
+        .map_err(|e| db_err(&e))
+    }
+
+    pub fn count_links(&self) -> Result<i64> {
+        self.conn
+            .query_row("SELECT count(*) FROM links", [], |r| r.get(0))
+            .map_err(|e| db_err(&e))
+    }
+
+    pub fn count_tags(&self) -> Result<i64> {
+        self.conn
+            .query_row("SELECT count(DISTINCT tag) FROM tags", [], |r| r.get(0))
+            .map_err(|e| db_err(&e))
     }
 
     pub fn skipped(&self) -> Result<Vec<Skipped>> {
@@ -350,7 +469,10 @@ impl Index {
         let mut stmt = self
             .conn
             .prepare(&format!(
-                "SELECT path, title, mtime FROM files WHERE kind = 'page' AND {cond}
+                "SELECT path, title, mtime,
+                        (SELECT group_concat(tag, ' ') FROM (SELECT DISTINCT tag FROM tags
+                          WHERE tags.page = files.path ORDER BY tag))
+                 FROM files WHERE kind = 'page' AND {cond}
                  ORDER BY {order} LIMIT {limit} OFFSET {offset}"
             ))
             .map_err(|e| db_err(&e))?;
@@ -359,6 +481,10 @@ impl Index {
                 Ok(PageRow {
                     path: page_path(&r.get::<_, String>(0)?),
                     title: r.get(1)?,
+                    tags: r
+                        .get::<_, Option<String>>(3)?
+                        .map(|t| t.split(' ').map(str::to_string).collect())
+                        .unwrap_or_default(),
                     modified: r.get::<_, i64>(2)? / 1_000_000,
                 })
             })
@@ -427,6 +553,8 @@ pub enum Sort {
 pub struct PageRow {
     pub path: String,
     pub title: String,
+    /// The Page's Tags, lowercase.
+    pub tags: Vec<String>,
     /// Last modified, milliseconds since the Unix epoch.
     pub modified: i64,
 }
@@ -441,16 +569,43 @@ pub struct Hit {
     pub score: f64,
 }
 
+/// A Tag written in mixed case: `(page file, as written, byte range)`.
+pub(crate) type MixedCaseTag = (String, String, Option<[i64; 2]>);
+
+/// One Link row from the Index.
+#[derive(Debug, Clone)]
+pub(crate) struct StoredLink {
+    pub src: String,
+    pub range: [i64; 2],
+    pub raw: String,
+    pub dest: Option<String>,
+    pub wiki: bool,
+    pub heading: Option<String>,
+}
+
+impl StoredLink {
+    fn from_row(r: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            src: r.get(0)?,
+            range: [r.get(1)?, r.get(2)?],
+            raw: r.get(3)?,
+            dest: r.get(4)?,
+            wiki: r.get(5)?,
+            heading: r.get(6)?,
+        })
+    }
+}
+
 /// `eng/rust.md` → `eng/rust`.
-fn page_path(file: &str) -> String {
+pub(crate) fn page_path(file: &str) -> String {
     file.strip_suffix(".md").unwrap_or(file).to_string()
 }
 
-/// Which Pages a query covers (operations.md `Filter`). Tags arrive with the
-/// markdown parser.
+/// Which part of the Wiki a query covers (operations.md `Scope`).
 #[derive(Debug, Clone, Default, serde::Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 #[cfg_attr(feature = "clap", derive(clap::Args))]
-pub struct Filter {
+pub struct Scope {
     /// Only this Space: its home Page and everything under it.
     #[cfg_attr(feature = "clap", arg(long))]
     pub space: Option<String>,
@@ -459,21 +614,68 @@ pub struct Filter {
     pub path_prefix: Option<String>,
 }
 
-impl Filter {
-    /// A SQL condition on `path` (the file path, with `.md`) and its arguments.
-    fn sql(&self) -> (String, Vec<String>) {
+impl Scope {
+    /// A SQL condition on the file-path column `col`, and its arguments.
+    pub(crate) fn sql(&self, col: &str) -> (String, Vec<String>) {
         let mut conds = vec!["1".to_string()];
         let mut args = Vec::new();
         if let Some(space) = &self.space {
-            conds.push("(path = ? OR path LIKE ? ESCAPE '\\')".into());
+            conds.push(format!("({col} = ? OR {col} LIKE ? ESCAPE '\\')"));
             args.push(format!("{space}.md"));
             args.push(format!("{}/%", escape_like(space)));
         }
         if let Some(prefix) = &self.path_prefix {
-            conds.push("path LIKE ? ESCAPE '\\'".into());
+            conds.push(format!("{col} LIKE ? ESCAPE '\\'"));
             args.push(format!("{}%", escape_like(prefix)));
         }
         (conds.join(" AND "), args)
+    }
+}
+
+/// Which Pages a query covers (operations.md `Filter`).
+#[derive(Debug, Clone, Default, serde::Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "clap", derive(clap::Args))]
+pub struct Filter {
+    /// Only this Space: its home Page and everything under it.
+    #[cfg_attr(feature = "clap", arg(long))]
+    pub space: Option<String>,
+    /// Only Pages whose Page Path starts with this.
+    #[cfg_attr(feature = "clap", arg(long))]
+    pub path_prefix: Option<String>,
+    /// Only Pages carrying this Tag or, unless `exact`, one of its descendants.
+    #[cfg_attr(feature = "clap", arg(long))]
+    pub tag: Option<String>,
+    /// With `tag`: only the Tag itself, not its descendants.
+    #[serde(default)]
+    #[cfg_attr(feature = "clap", arg(long))]
+    pub exact: bool,
+}
+
+impl Filter {
+    fn scope(&self) -> Scope {
+        Scope {
+            space: self.space.clone(),
+            path_prefix: self.path_prefix.clone(),
+        }
+    }
+
+    fn sql(&self) -> (String, Vec<String>) {
+        let (mut cond, mut args) = self.scope().sql("path");
+        if let Some(tag) = &self.tag {
+            let tag = tag.to_lowercase();
+            if self.exact {
+                cond.push_str(" AND path IN (SELECT page FROM tags WHERE tag = ?)");
+                args.push(tag);
+            } else {
+                cond.push_str(
+                    " AND path IN (SELECT page FROM tags WHERE tag = ? OR tag LIKE ? ESCAPE '\\')",
+                );
+                args.push(tag.clone());
+                args.push(format!("{}/%", escape_like(&tag)));
+            }
+        }
+        (cond, args)
     }
 }
 
@@ -491,8 +693,9 @@ fn upsert(
     bytes: &[u8],
 ) -> Result<()> {
     let text = (file.kind == "page").then(|| String::from_utf8_lossy(bytes).into_owned());
-    let title = text.as_deref().map(|t| {
-        crate::ops::title_of(t).unwrap_or_else(|| {
+    let parsed = text.as_deref().map(parse);
+    let title = parsed.as_ref().map(|p| {
+        p.title.clone().unwrap_or_else(|| {
             page_path(path)
                 .rsplit('/')
                 .next()
@@ -506,14 +709,69 @@ fn upsert(
         params![path, file.kind, file.size, file.mtime, hash, title],
     )
     .map_err(|e| db_err(&e))?;
-    tx.execute("DELETE FROM pages_fts WHERE path = ?1", [path])
-        .map_err(|e| db_err(&e))?;
-    if let (Some(text), Some(title)) = (text, title) {
+    remove_derived(tx, path)?;
+    let (Some(text), Some(title), Some(parsed)) = (text, title, parsed) else {
+        return Ok(());
+    };
+    tx.execute(
+        "INSERT INTO pages_fts (path, title, body) VALUES (?1, ?2, ?3)",
+        params![path, title, text],
+    )
+    .map_err(|e| db_err(&e))?;
+    for h in &parsed.headings {
         tx.execute(
-            "INSERT INTO pages_fts (path, title, body) VALUES (?1, ?2, ?3)",
-            params![path, title, text],
+            "INSERT INTO headings (page, level, text, anchor, start, end) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![path, h.level, h.text, h.anchor, to_i64(h.range.start), to_i64(h.range.end)],
         )
         .map_err(|e| db_err(&e))?;
+    }
+    for l in &parsed.links {
+        tx.execute(
+            "INSERT INTO links (src, start, end, raw, dest, wiki, embed, heading)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                path,
+                to_i64(l.range.start),
+                to_i64(l.range.end),
+                l.raw,
+                normalize_dest(path, l),
+                l.wiki,
+                l.embed,
+                l.heading
+            ],
+        )
+        .map_err(|e| db_err(&e))?;
+    }
+    for t in &parsed.tags {
+        tx.execute(
+            "INSERT INTO tags (page, tag, raw, source, start, end) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                path,
+                t.tag.to_lowercase(),
+                t.tag,
+                t.source.as_str(),
+                t.range.as_ref().map(|r| to_i64(r.start)),
+                t.range.as_ref().map(|r| to_i64(r.end))
+            ],
+        )
+        .map_err(|e| db_err(&e))?;
+    }
+    Ok(())
+}
+
+fn to_i64(n: usize) -> i64 {
+    i64::try_from(n).unwrap_or(i64::MAX)
+}
+
+/// Everything derived from one file's content.
+fn remove_derived(tx: &rusqlite::Transaction, path: &str) -> Result<()> {
+    for sql in [
+        "DELETE FROM pages_fts WHERE path = ?1",
+        "DELETE FROM links WHERE src = ?1",
+        "DELETE FROM tags WHERE page = ?1",
+        "DELETE FROM headings WHERE page = ?1",
+    ] {
+        tx.execute(sql, [path]).map_err(|e| db_err(&e))?;
     }
     Ok(())
 }
@@ -521,9 +779,7 @@ fn upsert(
 fn remove(tx: &rusqlite::Transaction, path: &str) -> Result<()> {
     tx.execute("DELETE FROM files WHERE path = ?1", [path])
         .map_err(|e| db_err(&e))?;
-    tx.execute("DELETE FROM pages_fts WHERE path = ?1", [path])
-        .map_err(|e| db_err(&e))?;
-    Ok(())
+    remove_derived(tx, path)
 }
 
 fn touch(tx: &rusqlite::Transaction) -> Result<()> {

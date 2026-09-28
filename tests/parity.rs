@@ -201,6 +201,67 @@ fn scenario() -> Vec<Step> {
             cli: &["search", "   "],
         },
         Step {
+            op: "create_page",
+            input: json!({ "path": "eng/rust", "content": "---\ntags: [lang/rust]\n---\n# Rust\n\n## Pinning\n\n[[eng/async-notes]] [[eng/async-notes#nope]] [[Eng/Async-Notes]] [[eng/missing]] [n](../notes.md) #Lang/Unsafe\n" }),
+            cli: &[
+                "create-page",
+                "--path",
+                "eng/rust",
+                "--content",
+                "---\ntags: [lang/rust]\n---\n# Rust\n\n## Pinning\n\n[[eng/async-notes]] [[eng/async-notes#nope]] [[Eng/Async-Notes]] [[eng/missing]] [n](../notes.md) #Lang/Unsafe\n",
+            ],
+        },
+        Step {
+            op: "links",
+            input: json!({ "page": "eng/rust" }),
+            cli: &["links", "eng/rust"],
+        },
+        Step {
+            op: "backlinks",
+            input: json!({ "target": "eng/async-notes" }),
+            cli: &["backlinks", "eng/async-notes"],
+        },
+        Step {
+            op: "resolve_link",
+            input: json!({ "from_page": "notes", "raw": "[[eng/rust#pinning]]" }),
+            cli: &["resolve-link", "notes", "[[eng/rust#pinning]]"],
+        },
+        Step {
+            op: "resolve_link",
+            input: json!({ "from_page": "notes", "raw": "plain text" }),
+            cli: &["resolve-link", "notes", "plain text"],
+        },
+        Step {
+            op: "outline",
+            input: json!({ "page": "eng/rust" }),
+            cli: &["outline", "eng/rust"],
+        },
+        Step {
+            op: "tag_tree",
+            input: json!({}),
+            cli: &["tag-tree"],
+        },
+        Step {
+            op: "list_pages",
+            input: json!({ "filter": { "tag": "lang" }, "sort": "path" }),
+            cli: &["list-pages", "--tag", "lang"],
+        },
+        Step {
+            op: "check",
+            input: json!({ "kinds": ["broken_link", "case_fallback", "heading_missing", "mixed_case_tag"] }),
+            cli: &[
+                "check",
+                "--kind",
+                "broken-link",
+                "--kind",
+                "case-fallback",
+                "--kind",
+                "heading-missing",
+                "--kind",
+                "mixed-case-tag",
+            ],
+        },
+        Step {
             op: "index_status",
             input: json!({}),
             cli: &["index-status"],
@@ -349,8 +410,30 @@ async fn every_interface_behaves_identically() {
     );
     let status = &core[core.len() - 2]["result"];
     assert_eq!(
-        (status["pages"].as_i64(), status["attachments"].as_i64()),
-        (Some(2), Some(0))
+        (
+            status["pages"].as_i64(),
+            status["links"].as_i64(),
+            status["tags"].as_i64()
+        ),
+        (Some(3), Some(5), Some(2)),
+        "3 Pages, 5 Links written, Tags lang/rust and lang/unsafe"
+    );
+    let check = &core[core.len() - 3]["result"]["diagnostics"];
+    let found: Vec<&str> = check
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|d| d["kind"].as_str())
+        .collect();
+    assert_eq!(
+        found,
+        // `[n](../notes.md)` from eng/rust.md is notes.md, which exists.
+        [
+            "heading_missing",
+            "case_fallback",
+            "broken_link",
+            "mixed_case_tag"
+        ]
     );
     assert_eq!(
         kinds,
@@ -362,6 +445,7 @@ async fn every_interface_behaves_identically() {
             "conflict",
             "no_match",
             "ambiguous_match",
+            "invalid_input",
             "invalid_input"
         ]
     );

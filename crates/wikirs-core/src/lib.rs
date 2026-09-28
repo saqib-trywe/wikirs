@@ -5,6 +5,8 @@
 
 pub mod error;
 pub mod index;
+pub mod links;
+pub mod markdown;
 pub mod ops;
 pub mod plan;
 mod registry;

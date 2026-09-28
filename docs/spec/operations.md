@@ -44,6 +44,8 @@ A closed set. Each entry below lists which it can return. `Io` and `Internal` ar
 | `Io` | Filesystem failure |
 | `Internal` | A bug: a panic caught by the registry, or a broken invariant |
 
+Every Input rejects unknown fields with `InvalidInput`, so a misplaced or misspelled argument (e.g. `list_pages{tag}` instead of `list_pages{filter: {tag}}`) never silently does something else. The JSON schemas say so too (`additionalProperties: false`).
+
 Warnings are never errors. On JSON Interfaces every Output is wrapped as `{ result, warnings }` (see [errors.md](errors.md#success-and-warnings)).
 
 ## Wiki

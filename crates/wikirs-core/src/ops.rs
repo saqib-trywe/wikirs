@@ -1,12 +1,16 @@
 //! The Operation catalogue (docs/spec/operations.md). Walking skeleton: `get_page`, `create_page`.
 
+use std::collections::{BTreeMap, BTreeSet};
+
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     Error, Kind, Operation, Result, Wiki,
     error::ChangedFile,
-    index::{Filter, Hit, PageRow, Skipped, Sort},
+    index::{Filter, Hit, PageRow, Scope, Skipped, Sort, page_path},
+    links::{LinkStatus, Resolved, normalize_dest, resolve},
+    markdown,
     plan::{Edit, Plan, Splice, UnrecoveredEdit, Warning, mutate, unrecovered_edits, version_of},
     wiki::{PagePath, check_case_conflict, slugify},
 };
@@ -14,6 +18,12 @@ use crate::{
 crate::operations![
     GetPage,
     ListPages,
+    Links,
+    Backlinks,
+    ResolveLink,
+    Outline,
+    TagTree,
+    Check,
     CreatePage,
     WritePage,
     EditPage,
@@ -28,6 +38,7 @@ pub struct GetPage;
 
 /// Read one Page.
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 #[cfg_attr(feature = "clap", derive(clap::Args))]
 pub struct GetPageInput {
     /// Page Path, e.g. `eng/rust/async-notes`.
@@ -40,6 +51,10 @@ pub struct GetPageOutput {
     pub title: String,
     /// Raw markdown, exactly as stored.
     pub content: String,
+    /// The frontmatter as JSON, or null if the Page has none.
+    pub frontmatter: Option<serde_json::Value>,
+    /// The Page's Tags (frontmatter and inline), lowercase, deduplicated.
+    pub tags: Vec<String>,
     /// Opaque content hash; pass it back as `base_version` when writing.
     pub version: String,
 }
@@ -68,28 +83,17 @@ impl Operation for GetPage {
         let content = String::from_utf8(bytes).map_err(|_| {
             Error::invalid_input(Some("page"), format!("`{}` is not UTF-8", page.as_str()))
         })?;
+        let parsed = markdown::parse(&content);
+        let tags: BTreeSet<String> = parsed.tags.iter().map(|t| t.tag.to_lowercase()).collect();
         Ok(GetPageOutput {
             path: page.as_str().to_string(),
-            title: title_of(&content).unwrap_or_else(|| page.file_stem().to_string()),
+            title: parsed.title.unwrap_or_else(|| page.file_stem().to_string()),
+            frontmatter: parsed.frontmatter,
+            tags: tags.into_iter().collect(),
             version: version_of(content.as_bytes()),
             content,
         })
     }
-}
-
-/// First level-1 heading, skipping a leading frontmatter block.
-/// Walking skeleton: frontmatter `title` comes with the frontmatter slice.
-pub(crate) fn title_of(content: &str) -> Option<String> {
-    let mut lines = content.lines();
-    let mut body: Box<dyn Iterator<Item = &str>> = Box::new(content.lines());
-    if content.starts_with("---\n") {
-        lines.next();
-        if lines.by_ref().any(|l| l == "---") {
-            body = Box::new(lines);
-        }
-    }
-    body.find_map(|l| l.strip_prefix("# "))
-        .map(|t| t.trim().to_string())
 }
 
 // --------------------------------------------------------------- create_page
@@ -98,6 +102,7 @@ pub struct CreatePage;
 
 /// Create a Page, either at `path` or under `parent` from a `title`.
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 #[cfg_attr(feature = "clap", derive(clap::Args))]
 pub struct CreatePageInput {
     /// Page Path to create. Give either this or `title`.
@@ -109,8 +114,8 @@ pub struct CreatePageInput {
     /// Title: slugified into the filename and written as the H1.
     #[cfg_attr(feature = "clap", arg(long))]
     pub title: Option<String>,
-    /// Initial markdown.
-    #[cfg_attr(feature = "clap", arg(long))]
+    /// Initial markdown. (May start with `---` frontmatter.)
+    #[cfg_attr(feature = "clap", arg(long, allow_hyphen_values = true))]
     pub content: Option<String>,
     /// Return the Plan without applying it.
     #[serde(default)]
@@ -205,12 +210,13 @@ pub struct WritePage;
 
 /// Replace a Page's whole content.
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 #[cfg_attr(feature = "clap", derive(clap::Args))]
 pub struct WritePageInput {
     /// Page Path.
     pub page: String,
-    /// The new markdown.
-    #[cfg_attr(feature = "clap", arg(long))]
+    /// The new markdown. (May start with `---` frontmatter.)
+    #[cfg_attr(feature = "clap", arg(long, allow_hyphen_values = true))]
     pub content: String,
     /// The `version` you read; if the Page changed since, nothing is written (`conflict`).
     #[cfg_attr(feature = "clap", arg(long))]
@@ -302,6 +308,7 @@ pub struct EditPage;
 
 /// One exact-string replacement: `old` must occur exactly once in the Page.
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct Replacement {
     pub old: String,
     pub new: String,
@@ -309,6 +316,7 @@ pub struct Replacement {
 
 /// Replace exact strings in a Page. All replacements apply, or none do.
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 #[cfg_attr(feature = "clap", derive(clap::Args))]
 pub struct EditPageInput {
     /// Page Path.
@@ -407,6 +415,7 @@ pub struct ListPages;
 
 /// List Pages, optionally filtered, sorted and paged.
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 #[cfg_attr(feature = "clap", derive(clap::Args))]
 pub struct ListPagesInput {
     #[serde(default)]
@@ -458,9 +467,11 @@ pub struct Search;
 
 /// Full-text search over Pages.
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 #[cfg_attr(feature = "clap", derive(clap::Args))]
 pub struct SearchInput {
     /// Plain terms (all must match), `"quoted phrases"`, and `prefix*`.
+    #[cfg_attr(feature = "clap", arg(allow_hyphen_values = true))]
     pub text: String,
     #[serde(default)]
     #[cfg_attr(feature = "clap", command(flatten))]
@@ -539,6 +550,7 @@ pub struct IndexStatus;
 
 /// Report on the Index.
 #[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 #[cfg_attr(feature = "clap", derive(clap::Args))]
 pub struct IndexStatusInput {}
 
@@ -550,6 +562,10 @@ pub struct IndexStatusOutput {
     pub cache_dir: String,
     pub pages: i64,
     pub attachments: i64,
+    /// Links written in Pages (resolved or not).
+    pub links: i64,
+    /// Distinct Tags.
+    pub tags: i64,
     /// When the Index last changed, milliseconds since the Unix epoch.
     pub last_updated: Option<i64>,
     /// Whether the Index may be behind the files (always false right after open).
@@ -580,6 +596,8 @@ fn status(wiki: &Wiki) -> Result<IndexStatusOutput> {
         cache_dir: wiki.cache_dir().display().to_string(),
         pages: index.count("page")?,
         attachments: index.count("attachment")?,
+        links: index.count_links()?,
+        tags: index.count_tags()?,
         last_updated: index.last_updated()?,
         stale: false,
         watcher: "none".into(),
@@ -594,6 +612,7 @@ pub struct RebuildIndex;
 
 /// Drop the Index and rebuild it from the files.
 #[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 #[cfg_attr(feature = "clap", derive(clap::Args))]
 pub struct RebuildIndexInput {}
 
@@ -608,6 +627,415 @@ impl Operation for RebuildIndex {
     fn run(wiki: &Wiki, _input: RebuildIndexInput) -> Result<IndexStatusOutput> {
         wiki.index().rebuild(wiki.root())?;
         status(wiki)
+    }
+}
+
+// --------------------------------------------------------------------- links
+
+pub struct Links;
+
+/// The Links a Page makes.
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "clap", derive(clap::Args))]
+pub struct LinksInput {
+    /// Page Path.
+    pub page: String,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct LinkOut {
+    /// The Link's source text.
+    pub raw: String,
+    /// Byte range `[start, end)` in the Page.
+    pub range: [i64; 2],
+    #[serde(flatten)]
+    pub resolved: Resolved,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct LinksOutput {
+    pub links: Vec<LinkOut>,
+}
+
+impl Operation for Links {
+    const NAME: &'static str = "links";
+    const KIND: Kind = Kind::Query;
+    const DESCRIPTION: &'static str =
+        "The Links a Page makes, each resolved: ok, broken, heading_missing or case_fallback.";
+    type Input = LinksInput;
+    type Output = LinksOutput;
+
+    fn run(wiki: &Wiki, input: LinksInput) -> Result<LinksOutput> {
+        let page = existing_page(wiki, &input.page)?;
+        let file = format!("{}.md", page.as_str());
+        let index = wiki.index();
+        let scope = Scope {
+            space: None,
+            path_prefix: Some(file.clone()),
+        };
+        let links = index
+            .stored_links(&scope)?
+            .into_iter()
+            .filter(|l| l.src == file)
+            .map(|l| {
+                Ok(LinkOut {
+                    resolved: resolve(
+                        index.conn(),
+                        l.dest.as_deref(),
+                        l.wiki,
+                        l.heading.as_deref(),
+                    )?,
+                    raw: l.raw,
+                    range: l.range,
+                })
+            })
+            .collect::<Result<_>>()?;
+        Ok(LinksOutput { links })
+    }
+}
+
+/// A Page that must exist (exact case), for read Operations.
+fn existing_page(wiki: &Wiki, raw: &str) -> Result<PagePath> {
+    let page = PagePath::parse(raw)?;
+    if check_case_conflict(wiki, &page).is_err() || !wiki.page_file(&page).is_file() {
+        return Err(Error::not_found("page", page.as_str()));
+    }
+    Ok(page)
+}
+
+// ----------------------------------------------------------------- backlinks
+
+pub struct Backlinks;
+
+/// The Links pointing at a Page or Attachment.
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "clap", derive(clap::Args))]
+pub struct BacklinksInput {
+    /// Page Path or Attachment path. A missing target is fine: Broken Links point at it.
+    pub target: String,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct Backlink {
+    /// The linking Page.
+    pub from: String,
+    pub range: [i64; 2],
+    pub raw: String,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct BacklinksOutput {
+    pub backlinks: Vec<Backlink>,
+}
+
+impl Operation for Backlinks {
+    const NAME: &'static str = "backlinks";
+    const KIND: Kind = Kind::Query;
+    const DESCRIPTION: &'static str =
+        "The Links pointing at a Page or Attachment (including Broken ones).";
+    type Input = BacklinksInput;
+    type Output = BacklinksOutput;
+
+    fn run(wiki: &Wiki, input: BacklinksInput) -> Result<BacklinksOutput> {
+        let target = input.target.trim().trim_start_matches('/').to_string();
+        let index = wiki.index();
+        let mut backlinks = Vec::new();
+        for l in index.links_to(&target)? {
+            let resolved = resolve(index.conn(), l.dest.as_deref(), l.wiki, None)?;
+            if resolved.target == target {
+                backlinks.push(Backlink {
+                    from: page_path(&l.src),
+                    range: l.range,
+                    raw: l.raw,
+                });
+            }
+        }
+        Ok(BacklinksOutput { backlinks })
+    }
+}
+
+// -------------------------------------------------------------- resolve_link
+
+pub struct ResolveLink;
+
+/// Resolve one Link as it would be written in a Page.
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "clap", derive(clap::Args))]
+pub struct ResolveLinkInput {
+    /// The Page the Link is written in (relative Links resolve from here).
+    pub from_page: String,
+    /// The Link's source, e.g. `[[eng/rust#Pinning]]` or `[x](../a.md)`.
+    pub raw: String,
+}
+
+impl Operation for ResolveLink {
+    const NAME: &'static str = "resolve_link";
+    const KIND: Kind = Kind::Query;
+    const DESCRIPTION: &'static str = "Resolve a Link as written in a Page: its target and status.";
+    type Input = ResolveLinkInput;
+    type Output = Resolved;
+
+    fn run(wiki: &Wiki, input: ResolveLinkInput) -> Result<Resolved> {
+        let from = PagePath::parse(&input.from_page)?;
+        let parsed = markdown::parse(&input.raw);
+        let [link] = parsed.links.as_slice() else {
+            return Err(Error::invalid_input(Some("raw"), "not exactly one Link"));
+        };
+        let dest = normalize_dest(&format!("{}.md", from.as_str()), link);
+        resolve(
+            wiki.index().conn(),
+            dest.as_deref(),
+            link.wiki,
+            link.heading.as_deref(),
+        )
+    }
+}
+
+// ------------------------------------------------------------------- outline
+
+pub struct Outline;
+
+/// A Page's headings.
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "clap", derive(clap::Args))]
+pub struct OutlineInput {
+    /// Page Path.
+    pub page: String,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct OutlineHeading {
+    pub level: u8,
+    pub text: String,
+    /// Use as a Link's `#heading`.
+    pub anchor: String,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct OutlineOutput {
+    pub headings: Vec<OutlineHeading>,
+}
+
+impl Operation for Outline {
+    const NAME: &'static str = "outline";
+    const KIND: Kind = Kind::Query;
+    const DESCRIPTION: &'static str = "A Page's headings, with their level and anchor.";
+    type Input = OutlineInput;
+    type Output = OutlineOutput;
+
+    fn run(wiki: &Wiki, input: OutlineInput) -> Result<OutlineOutput> {
+        let page = GetPage::run(wiki, GetPageInput { page: input.page })?;
+        let headings = markdown::parse(&page.content)
+            .headings
+            .into_iter()
+            .map(|h| OutlineHeading {
+                level: h.level,
+                text: h.text,
+                anchor: h.anchor,
+            })
+            .collect();
+        Ok(OutlineOutput { headings })
+    }
+}
+
+// ------------------------------------------------------------------ tag_tree
+
+pub struct TagTree;
+
+/// The Tag hierarchy with Page counts.
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "clap", derive(clap::Args))]
+pub struct TagTreeInput {
+    /// Only Pages in this part of the Wiki.
+    #[serde(default)]
+    #[cfg_attr(feature = "clap", command(flatten))]
+    pub scope: Scope,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct TagNode {
+    /// Full Tag, lowercase (e.g. `lang/rust`).
+    pub tag: String,
+    /// Pages carrying exactly this Tag.
+    pub direct: usize,
+    /// Pages carrying this Tag or any descendant.
+    pub inclusive: usize,
+    pub children: Vec<TagNode>,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct TagTreeOutput {
+    pub tags: Vec<TagNode>,
+}
+
+impl Operation for TagTree {
+    const NAME: &'static str = "tag_tree";
+    const KIND: Kind = Kind::Query;
+    const DESCRIPTION: &'static str = "The Tag hierarchy with direct and inclusive Page counts.";
+    type Input = TagTreeInput;
+    type Output = TagTreeOutput;
+
+    fn run(wiki: &Wiki, input: TagTreeInput) -> Result<TagTreeOutput> {
+        let pairs = wiki.index().page_tags(&input.scope)?;
+        // Every Tag and each of its ancestors, with the Pages under it.
+        let mut direct: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+        let mut inclusive: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+        for (page, tag) in &pairs {
+            direct.entry(tag.clone()).or_default().insert(page.clone());
+            let segs: Vec<&str> = tag.split('/').collect();
+            for i in 1..=segs.len() {
+                inclusive
+                    .entry(segs[..i].join("/"))
+                    .or_default()
+                    .insert(page.clone());
+            }
+        }
+        Ok(TagTreeOutput {
+            tags: tag_nodes(None, &inclusive, &direct),
+        })
+    }
+}
+
+/// Tag nodes under `parent` (top level when `None`), with direct and inclusive counts.
+fn tag_nodes(
+    parent: Option<&str>,
+    inclusive: &BTreeMap<String, BTreeSet<String>>,
+    direct: &BTreeMap<String, BTreeSet<String>>,
+) -> Vec<TagNode> {
+    inclusive
+        .iter()
+        .filter(|(tag, _)| tag.rsplit_once('/').map(|(p, _)| p) == parent)
+        .map(|(tag, pages)| TagNode {
+            tag: tag.clone(),
+            direct: direct.get(tag).map_or(0, BTreeSet::len),
+            inclusive: pages.len(),
+            children: tag_nodes(Some(tag), inclusive, direct),
+        })
+        .collect()
+}
+
+// --------------------------------------------------------------------- check
+
+pub struct Check;
+
+/// Every diagnostic in the Wiki, or a part of it.
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "clap", derive(clap::Args))]
+pub struct CheckInput {
+    /// Only Pages in this part of the Wiki.
+    #[serde(default)]
+    #[cfg_attr(feature = "clap", command(flatten))]
+    pub scope: Scope,
+    /// Only these kinds (default: all).
+    #[serde(default)]
+    #[cfg_attr(feature = "clap", arg(long = "kind", value_enum))]
+    pub kinds: Vec<DiagnosticKind>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
+pub enum DiagnosticKind {
+    BrokenLink,
+    HeadingMissing,
+    CaseFallback,
+    MixedCaseTag,
+    UnrecoveredEdit,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct Diagnostic {
+    pub kind: DiagnosticKind,
+    /// The Page (or file) it's about.
+    pub page: String,
+    /// Byte range in the Page, when there is one.
+    pub range: Option<[i64; 2]>,
+    pub message: String,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct CheckOutput {
+    pub diagnostics: Vec<Diagnostic>,
+}
+
+impl Operation for Check {
+    const NAME: &'static str = "check";
+    const KIND: Kind = Kind::Query;
+    const DESCRIPTION: &'static str = "Diagnostics: Broken Links, missing headings, case fallbacks, mixed-case Tags, unrecovered edits.";
+    type Input = CheckInput;
+    type Output = CheckOutput;
+
+    fn run(wiki: &Wiki, input: CheckInput) -> Result<CheckOutput> {
+        let wanted = |k: DiagnosticKind| input.kinds.is_empty() || input.kinds.contains(&k);
+        let index = wiki.index();
+        let mut diagnostics = Vec::new();
+        for l in index.stored_links(&input.scope)? {
+            let r = resolve(
+                index.conn(),
+                l.dest.as_deref(),
+                l.wiki,
+                l.heading.as_deref(),
+            )?;
+            let (kind, message) = match r.status {
+                LinkStatus::Ok => continue,
+                LinkStatus::Broken => (
+                    DiagnosticKind::BrokenLink,
+                    format!("`{}` does not exist", r.target),
+                ),
+                LinkStatus::HeadingMissing => (
+                    DiagnosticKind::HeadingMissing,
+                    format!(
+                        "`{}` has no heading `{}`",
+                        r.target,
+                        r.heading.unwrap_or_default()
+                    ),
+                ),
+                LinkStatus::CaseFallback => (
+                    DiagnosticKind::CaseFallback,
+                    format!("resolves to `{}` only ignoring case", r.target),
+                ),
+            };
+            if wanted(kind) {
+                diagnostics.push(Diagnostic {
+                    kind,
+                    page: page_path(&l.src),
+                    range: Some(l.range),
+                    message,
+                });
+            }
+        }
+        if wanted(DiagnosticKind::MixedCaseTag) {
+            for (page, raw, range) in index.mixed_case_tags(&input.scope)? {
+                diagnostics.push(Diagnostic {
+                    kind: DiagnosticKind::MixedCaseTag,
+                    page: page_path(&page),
+                    range,
+                    message: format!(
+                        "Tag `{raw}` is written in mixed case; wikirs writes `{}`",
+                        raw.to_lowercase()
+                    ),
+                });
+            }
+        }
+        drop(index);
+        if wanted(DiagnosticKind::UnrecoveredEdit) {
+            for edit in unrecovered_edits(wiki) {
+                diagnostics.push(Diagnostic {
+                    kind: DiagnosticKind::UnrecoveredEdit,
+                    page: page_path(&edit.path),
+                    range: None,
+                    message: "an edit from a crashed Plan was left alone because the file changed"
+                        .into(),
+                });
+            }
+        }
+        Ok(CheckOutput { diagnostics })
     }
 }
 
@@ -891,7 +1319,7 @@ mod tests {
         }
         let eng = Filter {
             space: Some("eng".into()),
-            path_prefix: None,
+            ..Filter::default()
         };
         let listed = ListPages::run(
             &wiki,
@@ -927,21 +1355,77 @@ mod tests {
     }
 
     #[test]
-    fn get_page_title_falls_back_to_the_filename() {
+    fn case_fallback_needs_exactly_one_case_insensitive_match() {
+        let (dir, wiki) = wiki();
+        std::fs::create_dir_all(wiki.root().join("eng")).unwrap();
+        std::fs::write(wiki.root().join("eng/notes.md"), "# Notes\n").unwrap();
+        let reopen = || Wiki::open_with_cache(wiki.root(), dir.path().join("cache")).unwrap();
+        let status = |wiki: &Wiki, raw: &str| {
+            let input = ResolveLinkInput {
+                from_page: "index".into(),
+                raw: raw.into(),
+            };
+            ResolveLink::run(wiki, input).unwrap().status
+        };
+        assert_eq!(status(&reopen(), "[[eng/Notes]]"), LinkStatus::CaseFallback);
+        // A second file matching ignoring case (an extensionless Attachment) makes it ambiguous.
+        std::fs::write(wiki.root().join("eng/NOTES"), "x").unwrap();
+        assert_eq!(status(&reopen(), "[[eng/Notes]]"), LinkStatus::Broken);
+        assert_eq!(
+            status(&reopen(), "[[eng/notes]]"),
+            LinkStatus::Ok,
+            "an exact match still wins"
+        );
+    }
+
+    #[test]
+    fn unknown_input_fields_are_rejected_not_ignored() {
         let (_d, wiki) = wiki();
-        std::fs::write(
-            wiki.root().join("notes.md"),
-            "---\ntitle: x\n---\nno heading\n",
-        )
-        .unwrap();
-        let page = GetPage::run(
-            &wiki,
-            GetPageInput {
-                page: "notes".into(),
-            },
-        )
-        .unwrap();
-        assert_eq!(page.title, "notes");
+        let call = |op: &str, input: serde_json::Value| crate::find(op).unwrap().call(&wiki, input);
+        for (op, input) in [
+            ("list_pages", serde_json::json!({ "tag": "lang" })),
+            (
+                "list_pages",
+                serde_json::json!({ "filter": { "tags": "lang" } }),
+            ),
+            ("tag_tree", serde_json::json!({ "space": "eng" })),
+            (
+                "edit_page",
+                serde_json::json!({ "page": "x", "edits": [{ "old": "a", "new": "b", "all": true }] }),
+            ),
+        ] {
+            assert_eq!(
+                call(op, input.clone()).unwrap_err().kind,
+                ErrorKind::InvalidInput,
+                "{op} {input}"
+            );
+        }
+        assert!(
+            call(
+                "tag_tree",
+                serde_json::json!({ "scope": { "space": "eng" } })
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn get_page_title_is_frontmatter_then_h1_then_filename() {
+        let (_d, wiki) = wiki();
+        let title = |content: &str| {
+            std::fs::write(wiki.root().join("notes.md"), content).unwrap();
+            GetPage::run(
+                &wiki,
+                GetPageInput {
+                    page: "notes".into(),
+                },
+            )
+            .unwrap()
+            .title
+        };
+        assert_eq!(title("---\ntitle: From FM\n---\n# From H1\n"), "From FM");
+        assert_eq!(title("# From H1\n"), "From H1");
+        assert_eq!(title("no heading\n"), "notes");
         assert_eq!(
             GetPage::run(
                 &wiki,

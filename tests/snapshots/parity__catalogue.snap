@@ -8,6 +8,7 @@ expression: "wikirs_core::catalogue()"
       "description": "Read a Page: its raw markdown, Title and version.",
       "input_schema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
         "description": "Read one Page.",
         "properties": {
           "page": {
@@ -30,8 +31,18 @@ expression: "wikirs_core::catalogue()"
             "description": "Raw markdown, exactly as stored.",
             "type": "string"
           },
+          "frontmatter": {
+            "description": "The frontmatter as JSON, or null if the Page has none."
+          },
           "path": {
             "type": "string"
+          },
+          "tags": {
+            "description": "The Page's Tags (frontmatter and inline), lowercase, deduplicated.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "title": {
             "type": "string"
@@ -45,6 +56,7 @@ expression: "wikirs_core::catalogue()"
           "path",
           "title",
           "content",
+          "tags",
           "version"
         ],
         "title": "GetPageOutput",
@@ -56,8 +68,14 @@ expression: "wikirs_core::catalogue()"
       "input_schema": {
         "$defs": {
           "Filter": {
-            "description": "Which Pages a query covers (operations.md `Filter`). Tags arrive with the\nmarkdown parser.",
+            "additionalProperties": false,
+            "description": "Which Pages a query covers (operations.md `Filter`).",
             "properties": {
+              "exact": {
+                "default": false,
+                "description": "With `tag`: only the Tag itself, not its descendants.",
+                "type": "boolean"
+              },
               "path_prefix": {
                 "description": "Only Pages whose Page Path starts with this.",
                 "type": [
@@ -67,6 +85,13 @@ expression: "wikirs_core::catalogue()"
               },
               "space": {
                 "description": "Only this Space: its home Page and everything under it.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "tag": {
+                "description": "Only Pages carrying this Tag or, unless `exact`, one of its descendants.",
                 "type": [
                   "string",
                   "null"
@@ -85,6 +110,7 @@ expression: "wikirs_core::catalogue()"
           }
         },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
         "description": "List Pages, optionally filtered, sorted and paged.",
         "properties": {
           "filter": {
@@ -130,6 +156,13 @@ expression: "wikirs_core::catalogue()"
               "path": {
                 "type": "string"
               },
+              "tags": {
+                "description": "The Page's Tags, lowercase.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
               "title": {
                 "type": "string"
               }
@@ -137,6 +170,7 @@ expression: "wikirs_core::catalogue()"
             "required": [
               "path",
               "title",
+              "tags",
               "modified"
             ],
             "type": "object"
@@ -165,13 +199,522 @@ expression: "wikirs_core::catalogue()"
       }
     },
     {
+      "description": "The Links a Page makes, each resolved: ok, broken, heading_missing or case_fallback.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "description": "The Links a Page makes.",
+        "properties": {
+          "page": {
+            "description": "Page Path.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "page"
+        ],
+        "title": "LinksInput",
+        "type": "object"
+      },
+      "kind": "query",
+      "name": "links",
+      "output_schema": {
+        "$defs": {
+          "LinkOut": {
+            "properties": {
+              "heading": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "range": {
+                "description": "Byte range `[start, end)` in the Page.",
+                "items": {
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              },
+              "raw": {
+                "description": "The Link's source text.",
+                "type": "string"
+              },
+              "status": {
+                "$ref": "#/$defs/LinkStatus"
+              },
+              "target": {
+                "description": "Page Path (no `.md`) or Attachment path.",
+                "type": "string"
+              },
+              "target_kind": {
+                "$ref": "#/$defs/TargetKind"
+              }
+            },
+            "required": [
+              "raw",
+              "range",
+              "target",
+              "target_kind",
+              "status"
+            ],
+            "type": "object"
+          },
+          "LinkStatus": {
+            "enum": [
+              "ok",
+              "broken",
+              "heading_missing",
+              "case_fallback"
+            ],
+            "type": "string"
+          },
+          "TargetKind": {
+            "enum": [
+              "page",
+              "attachment"
+            ],
+            "type": "string"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "links": {
+            "items": {
+              "$ref": "#/$defs/LinkOut"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "links"
+        ],
+        "title": "LinksOutput",
+        "type": "object"
+      }
+    },
+    {
+      "description": "The Links pointing at a Page or Attachment (including Broken ones).",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "description": "The Links pointing at a Page or Attachment.",
+        "properties": {
+          "target": {
+            "description": "Page Path or Attachment path. A missing target is fine: Broken Links point at it.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target"
+        ],
+        "title": "BacklinksInput",
+        "type": "object"
+      },
+      "kind": "query",
+      "name": "backlinks",
+      "output_schema": {
+        "$defs": {
+          "Backlink": {
+            "properties": {
+              "from": {
+                "description": "The linking Page.",
+                "type": "string"
+              },
+              "range": {
+                "items": {
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              },
+              "raw": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "from",
+              "range",
+              "raw"
+            ],
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "backlinks": {
+            "items": {
+              "$ref": "#/$defs/Backlink"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "backlinks"
+        ],
+        "title": "BacklinksOutput",
+        "type": "object"
+      }
+    },
+    {
+      "description": "Resolve a Link as written in a Page: its target and status.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "description": "Resolve one Link as it would be written in a Page.",
+        "properties": {
+          "from_page": {
+            "description": "The Page the Link is written in (relative Links resolve from here).",
+            "type": "string"
+          },
+          "raw": {
+            "description": "The Link's source, e.g. `[[eng/rust#Pinning]]` or `[x](../a.md)`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from_page",
+          "raw"
+        ],
+        "title": "ResolveLinkInput",
+        "type": "object"
+      },
+      "kind": "query",
+      "name": "resolve_link",
+      "output_schema": {
+        "$defs": {
+          "LinkStatus": {
+            "enum": [
+              "ok",
+              "broken",
+              "heading_missing",
+              "case_fallback"
+            ],
+            "type": "string"
+          },
+          "TargetKind": {
+            "enum": [
+              "page",
+              "attachment"
+            ],
+            "type": "string"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "heading": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "$ref": "#/$defs/LinkStatus"
+          },
+          "target": {
+            "description": "Page Path (no `.md`) or Attachment path.",
+            "type": "string"
+          },
+          "target_kind": {
+            "$ref": "#/$defs/TargetKind"
+          }
+        },
+        "required": [
+          "target",
+          "target_kind",
+          "status"
+        ],
+        "title": "Resolved",
+        "type": "object"
+      }
+    },
+    {
+      "description": "A Page's headings, with their level and anchor.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "description": "A Page's headings.",
+        "properties": {
+          "page": {
+            "description": "Page Path.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "page"
+        ],
+        "title": "OutlineInput",
+        "type": "object"
+      },
+      "kind": "query",
+      "name": "outline",
+      "output_schema": {
+        "$defs": {
+          "OutlineHeading": {
+            "properties": {
+              "anchor": {
+                "description": "Use as a Link's `#heading`.",
+                "type": "string"
+              },
+              "level": {
+                "format": "uint8",
+                "maximum": 255,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "level",
+              "text",
+              "anchor"
+            ],
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "headings": {
+            "items": {
+              "$ref": "#/$defs/OutlineHeading"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "headings"
+        ],
+        "title": "OutlineOutput",
+        "type": "object"
+      }
+    },
+    {
+      "description": "The Tag hierarchy with direct and inclusive Page counts.",
+      "input_schema": {
+        "$defs": {
+          "Scope": {
+            "additionalProperties": false,
+            "description": "Which part of the Wiki a query covers (operations.md `Scope`).",
+            "properties": {
+              "path_prefix": {
+                "description": "Only Pages whose Page Path starts with this.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "space": {
+                "description": "Only this Space: its home Page and everything under it.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "description": "The Tag hierarchy with Page counts.",
+        "properties": {
+          "scope": {
+            "$ref": "#/$defs/Scope",
+            "description": "Only Pages in this part of the Wiki."
+          }
+        },
+        "title": "TagTreeInput",
+        "type": "object"
+      },
+      "kind": "query",
+      "name": "tag_tree",
+      "output_schema": {
+        "$defs": {
+          "TagNode": {
+            "properties": {
+              "children": {
+                "items": {
+                  "$ref": "#/$defs/TagNode"
+                },
+                "type": "array"
+              },
+              "direct": {
+                "description": "Pages carrying exactly this Tag.",
+                "format": "uint",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "inclusive": {
+                "description": "Pages carrying this Tag or any descendant.",
+                "format": "uint",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "tag": {
+                "description": "Full Tag, lowercase (e.g. `lang/rust`).",
+                "type": "string"
+              }
+            },
+            "required": [
+              "tag",
+              "direct",
+              "inclusive",
+              "children"
+            ],
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "tags": {
+            "items": {
+              "$ref": "#/$defs/TagNode"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "tags"
+        ],
+        "title": "TagTreeOutput",
+        "type": "object"
+      }
+    },
+    {
+      "description": "Diagnostics: Broken Links, missing headings, case fallbacks, mixed-case Tags, unrecovered edits.",
+      "input_schema": {
+        "$defs": {
+          "DiagnosticKind": {
+            "enum": [
+              "broken_link",
+              "heading_missing",
+              "case_fallback",
+              "mixed_case_tag",
+              "unrecovered_edit"
+            ],
+            "type": "string"
+          },
+          "Scope": {
+            "additionalProperties": false,
+            "description": "Which part of the Wiki a query covers (operations.md `Scope`).",
+            "properties": {
+              "path_prefix": {
+                "description": "Only Pages whose Page Path starts with this.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "space": {
+                "description": "Only this Space: its home Page and everything under it.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "description": "Every diagnostic in the Wiki, or a part of it.",
+        "properties": {
+          "kinds": {
+            "default": [],
+            "description": "Only these kinds (default: all).",
+            "items": {
+              "$ref": "#/$defs/DiagnosticKind"
+            },
+            "type": "array"
+          },
+          "scope": {
+            "$ref": "#/$defs/Scope",
+            "description": "Only Pages in this part of the Wiki."
+          }
+        },
+        "title": "CheckInput",
+        "type": "object"
+      },
+      "kind": "query",
+      "name": "check",
+      "output_schema": {
+        "$defs": {
+          "Diagnostic": {
+            "properties": {
+              "kind": {
+                "$ref": "#/$defs/DiagnosticKind"
+              },
+              "message": {
+                "type": "string"
+              },
+              "page": {
+                "description": "The Page (or file) it's about.",
+                "type": "string"
+              },
+              "range": {
+                "description": "Byte range in the Page, when there is one.",
+                "items": {
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": [
+                  "array",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "kind",
+              "page",
+              "message"
+            ],
+            "type": "object"
+          },
+          "DiagnosticKind": {
+            "enum": [
+              "broken_link",
+              "heading_missing",
+              "case_fallback",
+              "mixed_case_tag",
+              "unrecovered_edit"
+            ],
+            "type": "string"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "diagnostics": {
+            "items": {
+              "$ref": "#/$defs/Diagnostic"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "diagnostics"
+        ],
+        "title": "CheckOutput",
+        "type": "object"
+      }
+    },
+    {
       "description": "Create a Page at a path, or under a parent from a Title.",
       "input_schema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
         "description": "Create a Page, either at `path` or under `parent` from a `title`.",
         "properties": {
           "content": {
-            "description": "Initial markdown.",
+            "description": "Initial markdown. (May start with `---` frontmatter.)",
             "type": [
               "string",
               "null"
@@ -357,6 +900,7 @@ expression: "wikirs_core::catalogue()"
       "description": "Replace a Page's content. Pass `base_version` to refuse if it changed since you read it.",
       "input_schema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
         "description": "Replace a Page's whole content.",
         "properties": {
           "base_version": {
@@ -367,7 +911,7 @@ expression: "wikirs_core::catalogue()"
             ]
           },
           "content": {
-            "description": "The new markdown.",
+            "description": "The new markdown. (May start with `---` frontmatter.)",
             "type": "string"
           },
           "dry_run": {
@@ -543,6 +1087,7 @@ expression: "wikirs_core::catalogue()"
       "input_schema": {
         "$defs": {
           "Replacement": {
+            "additionalProperties": false,
             "description": "One exact-string replacement: `old` must occur exactly once in the Page.",
             "properties": {
               "new": {
@@ -560,6 +1105,7 @@ expression: "wikirs_core::catalogue()"
           }
         },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
         "description": "Replace exact strings in a Page. All replacements apply, or none do.",
         "properties": {
           "base_version": {
@@ -749,8 +1295,14 @@ expression: "wikirs_core::catalogue()"
       "input_schema": {
         "$defs": {
           "Filter": {
-            "description": "Which Pages a query covers (operations.md `Filter`). Tags arrive with the\nmarkdown parser.",
+            "additionalProperties": false,
+            "description": "Which Pages a query covers (operations.md `Filter`).",
             "properties": {
+              "exact": {
+                "default": false,
+                "description": "With `tag`: only the Tag itself, not its descendants.",
+                "type": "boolean"
+              },
               "path_prefix": {
                 "description": "Only Pages whose Page Path starts with this.",
                 "type": [
@@ -764,12 +1316,20 @@ expression: "wikirs_core::catalogue()"
                   "string",
                   "null"
                 ]
+              },
+              "tag": {
+                "description": "Only Pages carrying this Tag or, unless `exact`, one of its descendants.",
+                "type": [
+                  "string",
+                  "null"
+                ]
               }
             },
             "type": "object"
           }
         },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
         "description": "Full-text search over Pages.",
         "properties": {
           "filter": {
@@ -861,6 +1421,7 @@ expression: "wikirs_core::catalogue()"
       "description": "Report on the Index: counts, freshness, skipped files, unrecovered edits.",
       "input_schema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
         "description": "Report on the Index.",
         "title": "IndexStatusInput",
         "type": "object"
@@ -1003,6 +1564,11 @@ expression: "wikirs_core::catalogue()"
               "null"
             ]
           },
+          "links": {
+            "description": "Links written in Pages (resolved or not).",
+            "format": "int64",
+            "type": "integer"
+          },
           "pages": {
             "format": "int64",
             "type": "integer"
@@ -1021,6 +1587,11 @@ expression: "wikirs_core::catalogue()"
             "description": "Whether the Index may be behind the files (always false right after open).",
             "type": "boolean"
           },
+          "tags": {
+            "description": "Distinct Tags.",
+            "format": "int64",
+            "type": "integer"
+          },
           "unrecovered_edits": {
             "items": {
               "$ref": "#/$defs/UnrecoveredEdit"
@@ -1037,6 +1608,8 @@ expression: "wikirs_core::catalogue()"
           "cache_dir",
           "pages",
           "attachments",
+          "links",
+          "tags",
           "stale",
           "watcher",
           "skipped",
@@ -1050,6 +1623,7 @@ expression: "wikirs_core::catalogue()"
       "description": "Drop the Index and rebuild it from the files. Changes no Wiki file.",
       "input_schema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
         "description": "Drop the Index and rebuild it from the files.",
         "title": "RebuildIndexInput",
         "type": "object"
@@ -1192,6 +1766,11 @@ expression: "wikirs_core::catalogue()"
               "null"
             ]
           },
+          "links": {
+            "description": "Links written in Pages (resolved or not).",
+            "format": "int64",
+            "type": "integer"
+          },
           "pages": {
             "format": "int64",
             "type": "integer"
@@ -1210,6 +1789,11 @@ expression: "wikirs_core::catalogue()"
             "description": "Whether the Index may be behind the files (always false right after open).",
             "type": "boolean"
           },
+          "tags": {
+            "description": "Distinct Tags.",
+            "format": "int64",
+            "type": "integer"
+          },
           "unrecovered_edits": {
             "items": {
               "$ref": "#/$defs/UnrecoveredEdit"
@@ -1226,6 +1810,8 @@ expression: "wikirs_core::catalogue()"
           "cache_dir",
           "pages",
           "attachments",
+          "links",
+          "tags",
           "stale",
           "watcher",
           "skipped",
