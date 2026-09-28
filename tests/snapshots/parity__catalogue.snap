@@ -1,0 +1,187 @@
+---
+source: tests/parity.rs
+expression: "wikirs_core::catalogue()"
+---
+{
+  "operations": [
+    {
+      "description": "Read a Page: its raw markdown, Title and version.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Read one Page.",
+        "properties": {
+          "page": {
+            "description": "Page Path, e.g. `eng/rust/async-notes`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "page"
+        ],
+        "title": "GetPageInput",
+        "type": "object"
+      },
+      "kind": "query",
+      "name": "get_page",
+      "output_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "content": {
+            "description": "Raw markdown, exactly as stored.",
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "version": {
+            "description": "Opaque content hash; pass it back as `base_version` when writing.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "title",
+          "content",
+          "version"
+        ],
+        "title": "GetPageOutput",
+        "type": "object"
+      }
+    },
+    {
+      "description": "Create a Page at a path, or under a parent from a Title.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Create a Page, either at `path` or under `parent` from a `title`.",
+        "properties": {
+          "content": {
+            "description": "Initial markdown.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dry_run": {
+            "default": false,
+            "description": "Return the Plan without applying it.",
+            "type": "boolean"
+          },
+          "parent": {
+            "description": "Parent Page Path for a `title`-based create (Wiki root if absent).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "path": {
+            "description": "Page Path to create. Give either this or `title`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "description": "Title: slugified into the filename and written as the H1.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "title": "CreatePageInput",
+        "type": "object"
+      },
+      "kind": "mutation",
+      "name": "create_page",
+      "output_schema": {
+        "$defs": {
+          "Edit": {
+            "oneOf": [
+              {
+                "description": "Create a new file. `path` is relative to the Wiki root.",
+                "properties": {
+                  "content": {
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "create",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "content"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "Plan": {
+            "properties": {
+              "edits": {
+                "items": {
+                  "$ref": "#/$defs/Edit"
+                },
+                "type": "array"
+              },
+              "warnings": {
+                "items": {
+                  "$ref": "#/$defs/Warning"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "edits",
+              "warnings"
+            ],
+            "type": "object"
+          },
+          "Warning": {
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "message"
+            ],
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "applied": {
+            "type": "boolean"
+          },
+          "path": {
+            "description": "The Page Path that was (or would be) created.",
+            "type": "string"
+          },
+          "plan": {
+            "$ref": "#/$defs/Plan"
+          }
+        },
+        "required": [
+          "path",
+          "plan",
+          "applied"
+        ],
+        "title": "CreatePageOutput",
+        "type": "object"
+      }
+    }
+  ],
+  "version": "0.1.0"
+}

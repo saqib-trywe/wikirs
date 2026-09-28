@@ -1,6 +1,58 @@
+[workspace]
+members = ["crates/*"]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+publish = false
+
+[workspace.dependencies]
+wikirs-core = { path = "crates/wikirs-core" }
+wikirs-cli = { path = "crates/wikirs-cli" }
+wikirs-mcp = { path = "crates/wikirs-mcp" }
+anyhow = "1"
+clap = { version = "4.6", features = ["derive"] }
+rmcp = { version = "3.5", features = ["server", "transport-io"] }
+schemars = "1.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tempfile = "3"
+insta = { version = "1.48", features = ["json"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std"] }
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+
 [package]
 name = "wikirs"
-version = "0.1.0"
-edition = "2024"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[features]
+default = ["mcp"]
+mcp = ["dep:wikirs-mcp"]
 
 [dependencies]
+wikirs-core.workspace = true
+wikirs-cli.workspace = true
+wikirs-mcp = { workspace = true, optional = true }
+clap.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+tempfile.workspace = true
+insta.workspace = true
+rmcp = { workspace = true, features = ["client"] }
+tokio.workspace = true
+
+[lints]
+workspace = true
