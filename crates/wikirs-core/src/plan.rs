@@ -1,50 +1,230 @@
-//! Plans: the file edits a mutation will make, computed first and applied as one unit.
+//! Plans and the mutation engine (ADR 0006, process-model.md#mutations).
 //!
-//! Walking skeleton: only `create` edits exist. The write lock, hash checks and
-//! roll-forward journal (ADR 0006) arrive in a later slice.
+//! Every mutation runs through [`mutate`]: take the Wiki-wide write lock,
+//! finish any crashed Plan, compute the Plan while recording the hash of every
+//! file read, stop there on a dry run, re-check those hashes, journal the Plan,
+//! apply it (creates/modifies before moves before deletes), drop the journal.
 
-use std::{fs, io::Write, path::Path};
+use std::{
+    collections::BTreeMap,
+    fs,
+    io::Write,
+    path::{Path, PathBuf},
+};
 
 use schemars::JsonSchema;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-use crate::{Error, Result, Wiki};
+use crate::{Error, Result, Wiki, error::ChangedFile};
 
-#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Plan {
     pub edits: Vec<Edit>,
     pub warnings: Vec<Warning>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
+/// One file edit. Paths are relative to the Wiki root.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum Edit {
-    /// Create a new file. `path` is relative to the Wiki root.
+    /// Create a new file.
     Create { path: String, content: String },
+    /// Splice an existing file. Every byte outside the splices is unchanged.
+    Modify {
+        path: String,
+        /// Hash of the file this edit was planned against.
+        base_version: String,
+        /// Non-overlapping byte ranges of the original file, in order.
+        splices: Vec<Splice>,
+    },
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
+impl Edit {
+    fn path(&self) -> &str {
+        match self {
+            Edit::Create { path, .. } | Edit::Modify { path, .. } => path,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct Splice {
+    /// Byte range `[start, end)` in the original file.
+    pub range: [usize; 2],
+    pub old: String,
+    pub new: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Warning {
     pub kind: String,
     pub message: String,
 }
 
-impl Plan {
-    pub fn apply(&self, wiki: &Wiki) -> Result<()> {
-        for edit in &self.edits {
-            match edit {
-                Edit::Create { path, content } => {
-                    let target = wiki.root().join(path);
-                    if target.exists() {
-                        return Err(Error::already_exists(path));
-                    }
-                    atomic_write(&target, content.as_bytes())
-                        .map_err(|e| Error::io(Some(path), &e))?;
-                }
+/// Content hash used as a file's `Version` (opaque to callers).
+#[must_use]
+pub fn version_of(bytes: &[u8]) -> String {
+    format!("{:032x}", xxhash_rust::xxh3::xxh3_128(bytes))
+}
+
+// ------------------------------------------------------------ transaction
+
+/// What a mutation sees while planning: reads are recorded so apply can
+/// detect files that changed underneath it.
+pub struct Tx<'w> {
+    wiki: &'w Wiki,
+    reads: BTreeMap<String, Option<String>>,
+    edits: Vec<Edit>,
+    warnings: Vec<Warning>,
+}
+
+/// A file as read during planning.
+pub struct ReadFile {
+    pub content: String,
+    pub version: String,
+}
+
+impl Tx<'_> {
+    /// Reads a file (relative path) and records its hash; `None` if absent.
+    pub fn read(&mut self, rel: &str) -> Result<Option<ReadFile>> {
+        let file = match fs::read(self.wiki.root().join(rel)) {
+            Ok(bytes) => {
+                let version = version_of(&bytes);
+                let content = String::from_utf8(bytes)
+                    .map_err(|_| Error::invalid_input(None, format!("`{rel}` is not UTF-8")))?;
+                Some(ReadFile { content, version })
             }
-        }
-        Ok(())
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+            Err(e) => return Err(Error::io(Some(rel), &e)),
+        };
+        self.reads
+            .insert(rel.to_string(), file.as_ref().map(|f| f.version.clone()));
+        Ok(file)
     }
+
+    pub fn edit(&mut self, edit: Edit) {
+        self.edits.push(edit);
+    }
+
+    pub fn warn(&mut self, kind: &str, message: impl Into<String>) {
+        self.warnings.push(Warning {
+            kind: kind.to_string(),
+            message: message.into(),
+        });
+    }
+}
+
+/// Runs one mutation: `plan` builds the Plan through a [`Tx`]; unless
+/// `dry_run`, the Plan is then applied as one unit.
+pub fn mutate<T>(
+    wiki: &Wiki,
+    dry_run: bool,
+    plan: impl FnOnce(&mut Tx) -> Result<T>,
+) -> Result<(Plan, T)> {
+    let _lock = wiki.lock_writes()?;
+    recover(wiki)?;
+
+    let mut tx = Tx {
+        wiki,
+        reads: BTreeMap::new(),
+        edits: Vec::new(),
+        warnings: Vec::new(),
+    };
+    let value = plan(&mut tx)?;
+    let Tx {
+        reads,
+        edits,
+        warnings,
+        ..
+    } = tx;
+    let plan = Plan { edits, warnings };
+    if dry_run || plan.edits.is_empty() {
+        return Ok((plan, value));
+    }
+
+    // Anything read while planning must still be exactly as read.
+    let changed: Vec<ChangedFile> = reads
+        .into_iter()
+        .filter_map(|(path, expected)| {
+            let actual = current_version(wiki, &path);
+            (actual != expected).then_some(ChangedFile {
+                path,
+                expected,
+                actual,
+            })
+        })
+        .collect();
+    if !changed.is_empty() {
+        return Err(Error::conflict_changed(&changed));
+    }
+
+    let journal = Journal::new(wiki, &plan)?;
+    journal.write(wiki)?;
+    for (applied, entry) in journal.entries.iter().enumerate() {
+        crash_hook(applied);
+        entry
+            .edit
+            .apply(wiki)
+            .map_err(|e| Error::io(Some(entry.edit.path()), &e))?;
+    }
+    Journal::remove(wiki)?;
+    Ok((plan, value))
+}
+
+fn current_version(wiki: &Wiki, rel: &str) -> Option<String> {
+    fs::read(wiki.root().join(rel)).ok().map(|b| version_of(&b))
+}
+
+#[cfg(feature = "test-hooks")]
+fn crash_hook(applied: usize) {
+    if std::env::var("WIKIRS_TEST_CRASH_AFTER_EDITS")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        == Some(applied)
+    {
+        std::process::abort();
+    }
+}
+
+#[cfg(not(feature = "test-hooks"))]
+fn crash_hook(_applied: usize) {}
+
+impl Edit {
+    /// The file content after this edit, given the content before it.
+    fn result(&self, before: Option<&str>) -> std::io::Result<String> {
+        match (self, before) {
+            (Edit::Create { content, .. }, None) => Ok(content.clone()),
+            (Edit::Modify { splices, .. }, Some(original)) => Ok(splice(original, splices)),
+            _ => Err(std::io::Error::other(
+                "file is not in the state this edit expects",
+            )),
+        }
+    }
+
+    fn apply(&self, wiki: &Wiki) -> std::io::Result<()> {
+        let target = wiki.root().join(self.path());
+        let before = match fs::read_to_string(&target) {
+            Ok(s) => Some(s),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+            Err(e) => return Err(e),
+        };
+        let after = self.result(before.as_deref())?;
+        atomic_write(&target, after.as_bytes())
+    }
+}
+
+/// Applies non-overlapping, ordered splices to `original`.
+#[must_use]
+pub fn splice(original: &str, splices: &[Splice]) -> String {
+    let mut out = String::with_capacity(original.len());
+    let mut at = 0;
+    for s in splices {
+        out.push_str(&original[at..s.range[0]]);
+        out.push_str(&s.new);
+        at = s.range[1];
+    }
+    out.push_str(&original[at..]);
+    out
 }
 
 /// Temp file in the same folder, fsync, rename over the target (process-model.md).
@@ -59,5 +239,127 @@ fn atomic_write(target: &Path, bytes: &[u8]) -> std::io::Result<()> {
     let mut file = fs::File::create(&tmp)?;
     file.write_all(bytes)?;
     file.sync_all()?;
+    drop(file);
     fs::rename(&tmp, target)
+}
+
+// ---------------------------------------------------------------- journal
+
+/// A Plan being applied, with each file's hash before and after its edit.
+#[derive(Debug, Serialize, Deserialize)]
+struct Journal {
+    entries: Vec<JournalEntry>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct JournalEntry {
+    edit: Edit,
+    before: Option<String>,
+    after: String,
+}
+
+/// An edit from a crashed Plan that recovery left alone because its file had
+/// changed in the meantime. Reported by `index_status` and `check`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UnrecoveredEdit {
+    pub path: String,
+    pub edit: Edit,
+}
+
+impl Journal {
+    fn new(wiki: &Wiki, plan: &Plan) -> Result<Self> {
+        // Creates and modifies come before moves and deletes (none exist yet),
+        // so a crash never loses content.
+        let entries = plan
+            .edits
+            .iter()
+            .map(|edit| {
+                let before = fs::read_to_string(wiki.root().join(edit.path())).ok();
+                let after = edit
+                    .result(before.as_deref())
+                    .map_err(|e| Error::io(Some(edit.path()), &e))?;
+                Ok(JournalEntry {
+                    edit: edit.clone(),
+                    before: before.map(|b| version_of(b.as_bytes())),
+                    after: version_of(after.as_bytes()),
+                })
+            })
+            .collect::<Result<_>>()?;
+        Ok(Self { entries })
+    }
+
+    fn path(wiki: &Wiki) -> PathBuf {
+        wiki.cache_dir().join("journal.json")
+    }
+
+    fn write(&self, wiki: &Wiki) -> Result<()> {
+        let bytes = serde_json::to_vec(self).map_err(|e| Error::internal(e.to_string()))?;
+        atomic_write(&Self::path(wiki), &bytes).map_err(|e| Error::io(Some("journal.json"), &e))
+    }
+
+    fn remove(wiki: &Wiki) -> Result<()> {
+        match fs::remove_file(Self::path(wiki)) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+                Err(Error::io(Some("journal.json"), &e))
+            }
+            _ => Ok(()),
+        }
+    }
+}
+
+/// Finishes a crashed Plan, if any. Caller holds the write lock.
+fn recover(wiki: &Wiki) -> Result<()> {
+    let Ok(bytes) = fs::read(Journal::path(wiki)) else {
+        return Ok(());
+    };
+    let journal: Journal = serde_json::from_slice(&bytes)
+        .map_err(|e| Error::internal(format!("unreadable journal: {e}")))?;
+    let mut unrecovered = Vec::new();
+    for entry in &journal.entries {
+        let current = current_version(wiki, entry.edit.path());
+        if current.as_deref() == Some(entry.after.as_str()) {
+            continue; // already applied
+        }
+        if current == entry.before {
+            entry
+                .edit
+                .apply(wiki)
+                .map_err(|e| Error::io(Some(entry.edit.path()), &e))?;
+        } else {
+            unrecovered.push(UnrecoveredEdit {
+                path: entry.edit.path().to_string(),
+                edit: entry.edit.clone(),
+            });
+        }
+    }
+    if !unrecovered.is_empty() {
+        let mut all = unrecovered_edits(wiki);
+        all.extend(unrecovered);
+        let bytes = serde_json::to_vec_pretty(&all).map_err(|e| Error::internal(e.to_string()))?;
+        atomic_write(&wiki.cache_dir().join("unrecovered.json"), &bytes)
+            .map_err(|e| Error::io(Some("unrecovered.json"), &e))?;
+    }
+    Journal::remove(wiki)
+}
+
+/// Recovery "at open": only when a journal exists, so ordinary opens take no lock.
+pub(crate) fn recover_at_open(wiki: &Wiki) -> Result<()> {
+    if !Journal::path(wiki).exists() {
+        return Ok(());
+    }
+    match wiki.lock_writes() {
+        Ok(_lock) => recover(wiki),
+        // Another process holds the lock and will recover it itself.
+        Err(e) if e.kind == crate::ErrorKind::Conflict => Ok(()),
+        Err(e) => Err(e),
+    }
+}
+
+/// Edits left alone by journal recovery on this machine.
+#[must_use]
+pub fn unrecovered_edits(wiki: &Wiki) -> Vec<UnrecoveredEdit> {
+    fs::read(wiki.cache_dir().join("unrecovered.json"))
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default()
 }

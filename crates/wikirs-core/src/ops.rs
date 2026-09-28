@@ -5,11 +5,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     Error, Kind, Operation, Result, Wiki,
-    plan::{Edit, Plan, Warning},
+    error::ChangedFile,
+    plan::{Edit, Plan, Splice, Warning, mutate, version_of},
     wiki::{PagePath, check_case_conflict, slugify},
 };
 
-crate::operations![GetPage, CreatePage];
+crate::operations![GetPage, CreatePage, WritePage, EditPage];
 
 // ------------------------------------------------------------------ get_page
 
@@ -79,10 +80,6 @@ fn title_of(content: &str) -> Option<String> {
     }
     body.find_map(|l| l.strip_prefix("# "))
         .map(|t| t.trim().to_string())
-}
-
-fn version_of(bytes: &[u8]) -> String {
-    format!("{:032x}", xxhash_rust::xxh3::xxh3_128(bytes))
 }
 
 // --------------------------------------------------------------- create_page
@@ -166,23 +163,20 @@ impl Operation for CreatePage {
             }
         };
 
-        // Case first: on case-insensitive filesystems (macOS, Windows) a case-only
-        // clash would otherwise look like the exact path already existing.
-        check_case_conflict(wiki, &page)?;
-        if wiki.page_file(&page).exists() {
-            return Err(Error::already_exists(page.as_str()));
-        }
-
-        let plan = Plan {
-            edits: vec![Edit::Create {
-                path: format!("{}.md", page.as_str()),
+        let (plan, ()) = mutate(wiki, input.dry_run, |tx| {
+            // Case first: on case-insensitive filesystems (macOS, Windows) a case-only
+            // clash would otherwise look like the exact path already existing.
+            check_case_conflict(wiki, &page)?;
+            let file = format!("{}.md", page.as_str());
+            if tx.read(&file)?.is_some() {
+                return Err(Error::already_exists(page.as_str()));
+            }
+            tx.edit(Edit::Create {
+                path: file,
                 content,
-            }],
-            warnings: Vec::new(),
-        };
-        if !input.dry_run {
-            plan.apply(wiki)?;
-        }
+            });
+            Ok(())
+        })?;
         Ok(CreatePageOutput {
             path: page.as_str().to_string(),
             plan,
@@ -195,6 +189,208 @@ impl Operation for CreatePage {
     }
 }
 
+// ---------------------------------------------------------------- write_page
+
+pub struct WritePage;
+
+/// Replace a Page's whole content.
+#[derive(Debug, Deserialize, JsonSchema)]
+#[cfg_attr(feature = "clap", derive(clap::Args))]
+pub struct WritePageInput {
+    /// Page Path.
+    pub page: String,
+    /// The new markdown.
+    #[cfg_attr(feature = "clap", arg(long))]
+    pub content: String,
+    /// The `version` you read; if the Page changed since, nothing is written (`conflict`).
+    #[cfg_attr(feature = "clap", arg(long))]
+    pub base_version: Option<String>,
+    /// Return the Plan without applying it.
+    #[serde(default)]
+    #[cfg_attr(feature = "clap", arg(long))]
+    pub dry_run: bool,
+}
+
+/// Result of a content write: the Plan and the Page's version afterwards.
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct WriteOutput {
+    pub path: String,
+    pub plan: Plan,
+    pub applied: bool,
+    /// The Page's version once the Plan is applied.
+    pub version: String,
+}
+
+impl Operation for WritePage {
+    const NAME: &'static str = "write_page";
+    const KIND: Kind = Kind::Mutation;
+    const DESCRIPTION: &'static str =
+        "Replace a Page's content. Pass `base_version` to refuse if it changed since you read it.";
+    type Input = WritePageInput;
+    type Output = WriteOutput;
+
+    fn run(wiki: &Wiki, input: WritePageInput) -> Result<WriteOutput> {
+        let page = PagePath::parse(&input.page)?;
+        let content = input.content;
+        let (plan, version) = mutate(wiki, input.dry_run, |tx| {
+            let (file, current) = read_page(wiki, tx, &page, input.base_version.as_deref())?;
+            if current.content != content {
+                tx.edit(Edit::Modify {
+                    path: file,
+                    base_version: current.version,
+                    splices: vec![Splice {
+                        range: [0, current.content.len()],
+                        old: current.content,
+                        new: content.clone(),
+                    }],
+                });
+            }
+            Ok(version_of(content.as_bytes()))
+        })?;
+        Ok(WriteOutput {
+            path: page.as_str().to_string(),
+            plan,
+            applied: !input.dry_run,
+            version,
+        })
+    }
+
+    fn warnings(output: &WriteOutput) -> Vec<Warning> {
+        output.plan.warnings.clone()
+    }
+}
+
+/// Reads an existing Page inside a mutation, enforcing `base_version`.
+fn read_page(
+    wiki: &Wiki,
+    tx: &mut crate::plan::Tx,
+    page: &PagePath,
+    base_version: Option<&str>,
+) -> Result<(String, crate::plan::ReadFile)> {
+    if check_case_conflict(wiki, page).is_err() {
+        return Err(Error::not_found("page", page.as_str()));
+    }
+    let file = format!("{}.md", page.as_str());
+    let current = tx
+        .read(&file)?
+        .ok_or_else(|| Error::not_found("page", page.as_str()))?;
+    if let Some(base) = base_version
+        && base != current.version
+    {
+        return Err(Error::conflict_changed(&[ChangedFile {
+            path: file,
+            expected: Some(base.to_string()),
+            actual: Some(current.version),
+        }]));
+    }
+    Ok((file, current))
+}
+
+// ----------------------------------------------------------------- edit_page
+
+pub struct EditPage;
+
+/// One exact-string replacement: `old` must occur exactly once in the Page.
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct Replacement {
+    pub old: String,
+    pub new: String,
+}
+
+/// Replace exact strings in a Page. All replacements apply, or none do.
+#[derive(Debug, Deserialize, JsonSchema)]
+#[cfg_attr(feature = "clap", derive(clap::Args))]
+pub struct EditPageInput {
+    /// Page Path.
+    pub page: String,
+    /// Replacements, each matched against the Page as it is now.
+    #[cfg_attr(
+        feature = "clap",
+        arg(long = "edit", value_name = r#"{"old":…,"new":…}"#, value_parser = parse_replacement, required = true)
+    )]
+    pub edits: Vec<Replacement>,
+    /// The `version` you read; if the Page changed since, nothing is written (`conflict`).
+    #[cfg_attr(feature = "clap", arg(long))]
+    pub base_version: Option<String>,
+    /// Return the Plan without applying it.
+    #[serde(default)]
+    #[cfg_attr(feature = "clap", arg(long))]
+    pub dry_run: bool,
+}
+
+#[cfg(feature = "clap")]
+fn parse_replacement(raw: &str) -> std::result::Result<Replacement, String> {
+    serde_json::from_str(raw).map_err(|e| format!("expected {{\"old\": …, \"new\": …}}: {e}"))
+}
+
+impl Operation for EditPage {
+    const NAME: &'static str = "edit_page";
+    const KIND: Kind = Kind::Mutation;
+    const DESCRIPTION: &'static str =
+        "Replace exact strings in a Page; each `old` must match exactly once.";
+    type Input = EditPageInput;
+    type Output = WriteOutput;
+
+    fn run(wiki: &Wiki, input: EditPageInput) -> Result<WriteOutput> {
+        let page = PagePath::parse(&input.page)?;
+        if input.edits.is_empty() {
+            return Err(Error::invalid_input(
+                Some("edits"),
+                "give at least one replacement",
+            ));
+        }
+        let (plan, version) = mutate(wiki, input.dry_run, |tx| {
+            let (file, current) = read_page(wiki, tx, &page, input.base_version.as_deref())?;
+            let splices = plan_replacements(&current.content, &input.edits)?;
+            let after = crate::plan::splice(&current.content, &splices);
+            tx.edit(Edit::Modify {
+                path: file,
+                base_version: current.version,
+                splices,
+            });
+            Ok(version_of(after.as_bytes()))
+        })?;
+        Ok(WriteOutput {
+            path: page.as_str().to_string(),
+            plan,
+            applied: !input.dry_run,
+            version,
+        })
+    }
+
+    fn warnings(output: &WriteOutput) -> Vec<Warning> {
+        output.plan.warnings.clone()
+    }
+}
+
+/// Finds each `old` exactly once in `content`, as ordered, non-overlapping splices.
+fn plan_replacements(content: &str, edits: &[Replacement]) -> Result<Vec<Splice>> {
+    let mut splices = Vec::with_capacity(edits.len());
+    for (i, edit) in edits.iter().enumerate() {
+        if edit.old.is_empty() {
+            return Err(Error::invalid_input(
+                Some("edits"),
+                format!("edit {i}: `old` is empty"),
+            ));
+        }
+        let hits: Vec<usize> = content.match_indices(&edit.old).map(|(at, _)| at).collect();
+        match hits.as_slice() {
+            [] => return Err(Error::match_count(i, 0)),
+            [at] => splices.push(Splice {
+                range: [*at, at + edit.old.len()],
+                old: edit.old.clone(),
+                new: edit.new.clone(),
+            }),
+            many => return Err(Error::match_count(i, many.len())),
+        }
+    }
+    splices.sort_by_key(|s| s.range[0]);
+    if splices.windows(2).any(|w| w[0].range[1] > w[1].range[0]) {
+        return Err(Error::invalid_input(Some("edits"), "replacements overlap"));
+    }
+    Ok(splices)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -202,7 +398,9 @@ mod tests {
 
     fn wiki() -> (tempfile::TempDir, Wiki) {
         let dir = tempfile::tempdir().unwrap();
-        let wiki = Wiki::open(dir.path()).unwrap();
+        std::fs::create_dir(dir.path().join("wiki")).unwrap();
+        let wiki =
+            Wiki::open_with_cache(dir.path().join("wiki"), dir.path().join("cache")).unwrap();
         (dir, wiki)
     }
 
@@ -267,6 +465,138 @@ mod tests {
             create(&wiki, "Eng/other", false).unwrap_err().kind,
             ErrorKind::CaseConflict
         );
+    }
+
+    fn write(wiki: &Wiki, content: &str, base: Option<&str>) -> Result<WriteOutput> {
+        WritePage::run(
+            wiki,
+            WritePageInput {
+                page: "eng/rust".into(),
+                content: content.into(),
+                base_version: base.map(Into::into),
+                dry_run: false,
+            },
+        )
+    }
+
+    fn edit(wiki: &Wiki, pairs: &[(&str, &str)], dry_run: bool) -> Result<WriteOutput> {
+        EditPage::run(
+            wiki,
+            EditPageInput {
+                page: "eng/rust".into(),
+                edits: pairs
+                    .iter()
+                    .map(|(o, n)| Replacement {
+                        old: (*o).into(),
+                        new: (*n).into(),
+                    })
+                    .collect(),
+                base_version: None,
+                dry_run,
+            },
+        )
+    }
+
+    fn read(wiki: &Wiki) -> String {
+        std::fs::read_to_string(wiki.root().join("eng/rust.md")).unwrap()
+    }
+
+    #[test]
+    fn write_page_refuses_a_stale_base_version() {
+        let (_d, wiki) = wiki();
+        create(&wiki, "eng/rust", false).unwrap();
+        let v1 = GetPage::run(
+            &wiki,
+            GetPageInput {
+                page: "eng/rust".into(),
+            },
+        )
+        .unwrap()
+        .version;
+        let out = write(&wiki, "# Two\n", Some(&v1)).unwrap();
+        assert_eq!(read(&wiki), "# Two\n");
+        assert_eq!(
+            out.version,
+            GetPage::run(
+                &wiki,
+                GetPageInput {
+                    page: "eng/rust".into()
+                }
+            )
+            .unwrap()
+            .version
+        );
+        let err = write(&wiki, "# Three\n", Some(&v1)).unwrap_err();
+        assert_eq!(err.kind, ErrorKind::Conflict);
+        assert_eq!(err.details["reason"], "changed");
+        assert_eq!(read(&wiki), "# Two\n", "a conflict writes nothing");
+        assert_eq!(
+            write(&wiki, "# Two\n", None).unwrap().plan.edits.len(),
+            0,
+            "no-op write has an empty Plan"
+        );
+    }
+
+    #[test]
+    fn edit_page_replaces_exact_strings_all_or_nothing() {
+        let (_d, wiki) = wiki();
+        CreatePage::run(
+            &wiki,
+            CreatePageInput {
+                path: Some("eng/rust".into()),
+                parent: None,
+                title: None,
+                content: Some("a b c b\n".into()),
+                dry_run: false,
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            edit(&wiki, &[("c", "C"), ("a", "A")], false)
+                .unwrap()
+                .plan
+                .edits
+                .len(),
+            1
+        );
+        assert_eq!(read(&wiki), "A b C b\n");
+        assert_eq!(
+            edit(&wiki, &[("A", "x"), ("zzz", "y")], false)
+                .unwrap_err()
+                .kind,
+            ErrorKind::NoMatch
+        );
+        let err = edit(&wiki, &[("b", "B")], false).unwrap_err();
+        assert_eq!(
+            (err.kind, err.details["count"].as_u64()),
+            (ErrorKind::AmbiguousMatch, Some(2))
+        );
+        assert_eq!(
+            edit(&wiki, &[("A b", "1"), ("b C", "2")], false)
+                .unwrap_err()
+                .kind,
+            ErrorKind::InvalidInput
+        );
+        edit(&wiki, &[("A", "Z")], true).unwrap();
+        assert_eq!(
+            read(&wiki),
+            "A b C b\n",
+            "failed and dry-run edits write nothing"
+        );
+    }
+
+    #[test]
+    fn a_held_write_lock_times_out_as_conflict() {
+        let (_d, wiki) = wiki();
+        let _held = wiki.lock_writes().unwrap();
+        let other = Wiki::open_with_cache(wiki.root(), wiki.cache_dir().parent().unwrap()).unwrap();
+        let started = std::time::Instant::now();
+        let err = create(&other, "eng/rust", false).unwrap_err();
+        assert_eq!(
+            (err.kind, err.details["reason"].as_str()),
+            (ErrorKind::Conflict, Some("lock_timeout"))
+        );
+        assert!(started.elapsed() >= std::time::Duration::from_secs(4));
     }
 
     #[test]

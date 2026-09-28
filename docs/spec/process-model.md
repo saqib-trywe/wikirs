@@ -11,13 +11,14 @@ How wikirs processes, external editors and the Index coexist. Decided in [Proces
 
 ## Per-Wiki cache dir
 
-`<os cache>/wikirs/<blake3(canonical root path), 16 hex>/`, overridable in the [machine settings](wiki-selection.md#machine-settings):
+`<os cache>/wikirs/<blake3(canonical root path), 16 hex>/`, overridable in the [machine settings](wiki-selection.md#machine-settings). The `WIKIRS_CACHE_DIR` env var replaces `<os cache>/wikirs` for every Wiki, which is how tests and CI keep their cache dirs out of the user's cache:
 
 | File | Purpose |
 |---|---|
 | `index.db` (+ `-wal`, `-shm`) | the Index |
 | `write.lock` | the Wiki-wide write lock |
 | `journal.json` | exists only while a Plan is applying, or after a crash |
+| `unrecovered.json` | edits journal recovery left alone because their file had changed (read by `index_status` and `check`) |
 | `wiki_root.txt` | the root path, for debugging |
 
 Moving the Wiki folder changes the key, so the Index is rebuilt (~1 s). Stale cache dirs aren't garbage-collected. `index_status` reports the path.
@@ -63,7 +64,7 @@ A rebuild writes a new DB next to the old one and renames it into place. It bump
 
 ## Mutations
 
-1. Take the Wiki-wide write lock (`fs4`). If it can't be taken within the timeout → `Conflict`. Queries never take it.
+1. Take the Wiki-wide write lock (the standard library's `File::try_lock`, an OS advisory lock, polled for up to 5 s). If it can't be taken within the timeout → `Conflict`. Queries never take it.
 2. If `journal.json` exists, recover it first (see below).
 3. Compute the Plan, recording the hash of every file it reads.
 4. If `dry_run`, release the lock and return the Plan.
@@ -74,7 +75,7 @@ A rebuild writes a new DB next to the old one and renames it into place. It bump
 
 **`Version`** is a content hash (xxh3-128, opaque to callers). mtime is never used to detect conflicts.
 
-**Journal recovery**, for each edit:
+**Journal recovery** runs when a mutation takes the lock, and at `Wiki::open` only if a journal exists (so ordinary opens never take the lock). For each edit:
 - hash = before → apply it
 - hash = after → skip it
 - otherwise → leave the file untouched and report the edit as a warning in `index_status` and `check`

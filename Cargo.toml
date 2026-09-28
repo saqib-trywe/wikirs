@@ -21,6 +21,8 @@ tempfile = "3"
 insta = { version = "1.48", features = ["json"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std"] }
 xxhash-rust = { version = "0.8", features = ["xxh3"] }
+blake3 = "1.8"
+dirs = "7"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
@@ -39,6 +41,8 @@ publish.workspace = true
 [features]
 default = ["mcp"]
 mcp = ["dep:wikirs-mcp"]
+# Fault injection for tests (testing.md). Never enabled in release builds.
+test-hooks = ["wikirs-core/test-hooks"]
 
 [dependencies]
 wikirs-core.workspace = true

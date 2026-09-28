@@ -1,23 +1,79 @@
 //! The Wiki handle, Page Paths, and finding a Wiki's root (docs/spec/wiki-selection.md).
 
-use std::path::{Path, PathBuf};
+use std::{
+    fs::File,
+    path::{Path, PathBuf},
+    time::{Duration, Instant},
+};
 
 use crate::{Error, Result};
+
+/// How long a mutation waits for another process's write lock (ADR 0006).
+const LOCK_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone)]
 pub struct Wiki {
     root: PathBuf,
+    cache_dir: PathBuf,
 }
 
 impl Wiki {
+    /// Opens the Wiki at `root`, finishing any Plan a crashed process left in
+    /// its journal (process-model.md).
     pub fn open(root: impl AsRef<Path>) -> Result<Self> {
+        Self::open_with_cache(root, cache_base())
+    }
+
+    /// Like [`Wiki::open`], with per-Wiki cache dirs under `cache_base` instead
+    /// of the OS cache dir (tests and embedders).
+    pub fn open_with_cache(root: impl AsRef<Path>, cache_base: impl AsRef<Path>) -> Result<Self> {
         let given = root.as_ref();
         let root = given
             .canonicalize()
             .ok()
             .filter(|p| p.is_dir())
             .ok_or_else(|| Error::not_found("wiki", &given.display().to_string()))?;
-        Ok(Self { root })
+        let cache_dir = cache_base.as_ref().join(wiki_key(&root));
+        let wiki = Self { root, cache_dir };
+        crate::plan::recover_at_open(&wiki)?;
+        Ok(wiki)
+    }
+
+    /// Per-Wiki cache dir: Index, write lock, journal (process-model.md).
+    #[must_use]
+    pub fn cache_dir(&self) -> &Path {
+        &self.cache_dir
+    }
+
+    /// Takes the Wiki-wide advisory write lock, waiting up to [`LOCK_TIMEOUT`]
+    /// for other wikirs processes. Released when the guard drops.
+    pub fn lock_writes(&self) -> Result<WriteLock> {
+        std::fs::create_dir_all(&self.cache_dir).map_err(|e| Error::io(Some("cache dir"), &e))?;
+        let root_note = self.cache_dir.join("wiki_root.txt");
+        if !root_note.exists() {
+            let _ = std::fs::write(&root_note, self.root.display().to_string());
+        }
+        let file = File::options()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(self.cache_dir.join("write.lock"))
+            .map_err(|e| Error::io(Some("write.lock"), &e))?;
+        let started = Instant::now();
+        loop {
+            match file.try_lock() {
+                Ok(()) => return Ok(WriteLock { _file: file }),
+                Err(std::fs::TryLockError::WouldBlock) if started.elapsed() < LOCK_TIMEOUT => {
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                Err(std::fs::TryLockError::WouldBlock) => {
+                    return Err(Error::conflict_lock_timeout());
+                }
+                Err(std::fs::TryLockError::Error(e)) => {
+                    return Err(Error::io(Some("write.lock"), &e));
+                }
+            }
+        }
     }
 
     #[must_use]
@@ -30,6 +86,26 @@ impl Wiki {
     pub fn page_file(&self, page: &PagePath) -> PathBuf {
         self.root.join(format!("{}.md", page.as_str()))
     }
+}
+
+/// Holds the Wiki's write lock; the OS releases it when the file closes.
+#[derive(Debug)]
+pub struct WriteLock {
+    _file: File,
+}
+
+/// `<os cache>/wikirs`, or `WIKIRS_CACHE_DIR` (used by tests and CI to keep
+/// per-Wiki cache dirs out of the user's cache).
+fn cache_base() -> PathBuf {
+    std::env::var_os("WIKIRS_CACHE_DIR")
+        .map(PathBuf::from)
+        .or_else(|| dirs::cache_dir().map(|d| d.join("wikirs")))
+        .unwrap_or_else(|| std::env::temp_dir().join("wikirs-cache"))
+}
+
+/// 16 hex chars of blake3(canonical root path).
+fn wiki_key(root: &Path) -> String {
+    blake3::hash(root.to_string_lossy().as_bytes()).to_hex()[..16].to_string()
 }
 
 /// Finds the root for CLI-style Interfaces: `--wiki`, then `WIKIRS_WIKI`, then

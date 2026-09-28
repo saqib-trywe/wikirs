@@ -30,6 +30,14 @@ pub struct Error {
     pub details: Value,
 }
 
+/// One file in a `conflict` error's details. `None` means the file is absent.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ChangedFile {
+    pub path: String,
+    pub expected: Option<String>,
+    pub actual: Option<String>,
+}
+
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 impl Error {
@@ -85,6 +93,42 @@ impl Error {
             ErrorKind::InvalidInput,
             reason.clone(),
             json!({ "field": field, "reason": reason }),
+        )
+    }
+
+    /// Files changed since `base_version` or since the Plan was computed.
+    #[must_use]
+    pub fn conflict_changed(files: &[ChangedFile]) -> Self {
+        let paths: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
+        Self::new(
+            ErrorKind::Conflict,
+            format!("changed since you read it: {}", paths.join(", ")),
+            json!({ "reason": "changed", "files": files }),
+        )
+    }
+
+    /// `edit_page`: replacement `edit_index` matched `count` times (0 → `no_match`).
+    #[must_use]
+    pub fn match_count(edit_index: usize, count: usize) -> Self {
+        let kind = if count == 0 {
+            ErrorKind::NoMatch
+        } else {
+            ErrorKind::AmbiguousMatch
+        };
+        Self::new(
+            kind,
+            format!("edit {edit_index}: `old` matched {count} times, expected exactly once"),
+            json!({ "edit_index": edit_index, "count": count }),
+        )
+    }
+
+    /// Another wikirs process held the Wiki's write lock for too long.
+    #[must_use]
+    pub fn conflict_lock_timeout() -> Self {
+        Self::new(
+            ErrorKind::Conflict,
+            "another wikirs process is writing to this Wiki; try again",
+            json!({ "reason": "lock_timeout", "files": [] }),
         )
     }
 

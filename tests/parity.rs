@@ -9,6 +9,14 @@ use rmcp::{ServiceExt, model::CallToolRequestParams};
 use serde_json::{Value, json};
 use wikirs_core::{Kind, Wiki};
 
+/// A fresh Wiki whose cache dir (lock, journal) also lives in the tempdir.
+fn temp_wiki() -> (tempfile::TempDir, Wiki) {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir(dir.path().join("wiki")).unwrap();
+    let wiki = Wiki::open_with_cache(dir.path().join("wiki"), dir.path().join("cache")).unwrap();
+    (dir, wiki)
+}
+
 fn registry_names(include: impl Fn(Kind) -> bool) -> Vec<String> {
     let mut names: Vec<String> = wikirs_core::registry()
         .iter()
@@ -37,8 +45,8 @@ fn cli_exposes_every_operation() {
 
 #[tokio::test]
 async fn mcp_exposes_every_operation_as_a_tool() {
-    let dir = tempfile::tempdir().unwrap();
-    let client = mcp_client(Wiki::open(dir.path()).unwrap()).await;
+    let (_dir, wiki) = temp_wiki();
+    let client = mcp_client(wiki).await;
     let mut tools: Vec<String> = client
         .list_all_tools()
         .await
@@ -63,6 +71,7 @@ struct Step {
     cli: &'static [&'static str],
 }
 
+#[allow(clippy::too_many_lines)] // one flat list of steps
 fn scenario() -> Vec<Step> {
     vec![
         Step {
@@ -123,6 +132,59 @@ fn scenario() -> Vec<Step> {
             input: json!({ "page": "notes" }),
             cli: &["get-page", "notes"],
         },
+        Step {
+            op: "write_page",
+            input: json!({ "page": "notes", "content": "# Notes\n\nv2\n", "base_version": "stale" }),
+            cli: &[
+                "write-page",
+                "notes",
+                "--content",
+                "# Notes\n\nv2\n",
+                "--base-version",
+                "stale",
+            ],
+        },
+        Step {
+            op: "write_page",
+            input: json!({ "page": "notes", "content": "# Notes\n\nv2\n" }),
+            cli: &["write-page", "notes", "--content", "# Notes\n\nv2\n"],
+        },
+        Step {
+            op: "edit_page",
+            input: json!({ "page": "notes", "edits": [{ "old": "v2", "new": "v3" }] }),
+            cli: &["edit-page", "notes", "--edit", r#"{"old":"v2","new":"v3"}"#],
+        },
+        Step {
+            op: "edit_page",
+            input: json!({ "page": "notes", "edits": [{ "old": "missing", "new": "x" }] }),
+            cli: &[
+                "edit-page",
+                "notes",
+                "--edit",
+                r#"{"old":"missing","new":"x"}"#,
+            ],
+        },
+        Step {
+            op: "edit_page",
+            input: json!({ "page": "notes", "edits": [{ "old": "\n", "new": " " }] }),
+            cli: &["edit-page", "notes", "--edit", r#"{"old":"\n","new":" "}"#],
+        },
+        Step {
+            op: "edit_page",
+            input: json!({ "page": "notes", "edits": [{ "old": "v3", "new": "v4" }], "dry_run": true }),
+            cli: &[
+                "edit-page",
+                "notes",
+                "--edit",
+                r#"{"old":"v3","new":"v4"}"#,
+                "--dry-run",
+            ],
+        },
+        Step {
+            op: "get_page",
+            input: json!({ "page": "notes" }),
+            cli: &["get-page", "notes"],
+        },
     ]
 }
 
@@ -131,8 +193,7 @@ fn outcome(result: wikirs_core::Result<Value>) -> Value {
 }
 
 fn via_core(steps: &[Step]) -> Vec<Value> {
-    let dir = tempfile::tempdir().unwrap();
-    let wiki = Wiki::open(dir.path()).unwrap();
+    let (_dir, wiki) = temp_wiki();
     steps
         .iter()
         .map(|s| {
@@ -146,13 +207,14 @@ fn via_core(steps: &[Step]) -> Vec<Value> {
 }
 
 fn via_cli(steps: &[Step]) -> Vec<Value> {
-    let dir = tempfile::tempdir().unwrap();
+    let (dir, _wiki) = temp_wiki();
     steps
         .iter()
         .map(|s| {
             let out = Command::new(env!("CARGO_BIN_EXE_wikirs"))
+                .env("WIKIRS_CACHE_DIR", dir.path().join("cache"))
                 .arg("--wiki")
-                .arg(dir.path())
+                .arg(dir.path().join("wiki"))
                 .arg("--json")
                 .args(s.cli)
                 .output()
@@ -169,8 +231,8 @@ fn via_cli(steps: &[Step]) -> Vec<Value> {
 }
 
 async fn via_mcp(steps: &[Step]) -> Vec<Value> {
-    let dir = tempfile::tempdir().unwrap();
-    let client = mcp_client(Wiki::open(dir.path()).unwrap()).await;
+    let (_dir, wiki) = temp_wiki();
+    let client = mcp_client(wiki).await;
     let mut out = Vec::new();
     for s in steps {
         let Value::Object(args) = s.input.clone() else {
@@ -227,12 +289,20 @@ async fn every_interface_behaves_identically() {
         .filter_map(|v| v["error"]["kind"].as_str())
         .collect();
     assert_eq!(
+        core.last().unwrap()["result"]["content"],
+        "# Notes\n\nv3\n",
+        "writes and edits landed; the dry run didn't"
+    );
+    assert_eq!(
         kinds,
         [
             "not_found",
             "already_exists",
             "case_conflict",
-            "invalid_path"
+            "invalid_path",
+            "conflict",
+            "no_match",
+            "ambiguous_match"
         ]
     );
 }

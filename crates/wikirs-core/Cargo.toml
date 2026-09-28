@@ -6,6 +6,7 @@ publish.workspace = true
 
 [features]
 clap = ["dep:clap"]
+test-hooks = []
 
 [dependencies]
 clap = { workspace = true, optional = true }
@@ -13,6 +14,8 @@ schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 xxhash-rust.workspace = true
+blake3.workspace = true
+dirs.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

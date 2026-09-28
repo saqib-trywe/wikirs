@@ -99,9 +99,10 @@ expression: "wikirs_core::catalogue()"
       "output_schema": {
         "$defs": {
           "Edit": {
+            "description": "One file edit. Paths are relative to the Wiki root.",
             "oneOf": [
               {
-                "description": "Create a new file. `path` is relative to the Wiki root.",
+                "description": "Create a new file.",
                 "properties": {
                   "content": {
                     "type": "string"
@@ -118,6 +119,36 @@ expression: "wikirs_core::catalogue()"
                   "op",
                   "path",
                   "content"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Splice an existing file. Every byte outside the splices is unchanged.",
+                "properties": {
+                  "base_version": {
+                    "description": "Hash of the file this edit was planned against.",
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "modify",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "splices": {
+                    "description": "Non-overlapping byte ranges of the original file, in order.",
+                    "items": {
+                      "$ref": "#/$defs/Splice"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "base_version",
+                  "splices"
                 ],
                 "type": "object"
               }
@@ -141,6 +172,33 @@ expression: "wikirs_core::catalogue()"
             "required": [
               "edits",
               "warnings"
+            ],
+            "type": "object"
+          },
+          "Splice": {
+            "properties": {
+              "new": {
+                "type": "string"
+              },
+              "old": {
+                "type": "string"
+              },
+              "range": {
+                "description": "Byte range `[start, end)` in the original file.",
+                "items": {
+                  "format": "uint",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              }
+            },
+            "required": [
+              "range",
+              "old",
+              "new"
             ],
             "type": "object"
           },
@@ -179,6 +237,397 @@ expression: "wikirs_core::catalogue()"
           "applied"
         ],
         "title": "CreatePageOutput",
+        "type": "object"
+      }
+    },
+    {
+      "description": "Replace a Page's content. Pass `base_version` to refuse if it changed since you read it.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Replace a Page's whole content.",
+        "properties": {
+          "base_version": {
+            "description": "The `version` you read; if the Page changed since, nothing is written (`conflict`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "content": {
+            "description": "The new markdown.",
+            "type": "string"
+          },
+          "dry_run": {
+            "default": false,
+            "description": "Return the Plan without applying it.",
+            "type": "boolean"
+          },
+          "page": {
+            "description": "Page Path.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "page",
+          "content"
+        ],
+        "title": "WritePageInput",
+        "type": "object"
+      },
+      "kind": "mutation",
+      "name": "write_page",
+      "output_schema": {
+        "$defs": {
+          "Edit": {
+            "description": "One file edit. Paths are relative to the Wiki root.",
+            "oneOf": [
+              {
+                "description": "Create a new file.",
+                "properties": {
+                  "content": {
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "create",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "content"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Splice an existing file. Every byte outside the splices is unchanged.",
+                "properties": {
+                  "base_version": {
+                    "description": "Hash of the file this edit was planned against.",
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "modify",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "splices": {
+                    "description": "Non-overlapping byte ranges of the original file, in order.",
+                    "items": {
+                      "$ref": "#/$defs/Splice"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "base_version",
+                  "splices"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "Plan": {
+            "properties": {
+              "edits": {
+                "items": {
+                  "$ref": "#/$defs/Edit"
+                },
+                "type": "array"
+              },
+              "warnings": {
+                "items": {
+                  "$ref": "#/$defs/Warning"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "edits",
+              "warnings"
+            ],
+            "type": "object"
+          },
+          "Splice": {
+            "properties": {
+              "new": {
+                "type": "string"
+              },
+              "old": {
+                "type": "string"
+              },
+              "range": {
+                "description": "Byte range `[start, end)` in the original file.",
+                "items": {
+                  "format": "uint",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              }
+            },
+            "required": [
+              "range",
+              "old",
+              "new"
+            ],
+            "type": "object"
+          },
+          "Warning": {
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "message"
+            ],
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Result of a content write: the Plan and the Page's version afterwards.",
+        "properties": {
+          "applied": {
+            "type": "boolean"
+          },
+          "path": {
+            "type": "string"
+          },
+          "plan": {
+            "$ref": "#/$defs/Plan"
+          },
+          "version": {
+            "description": "The Page's version once the Plan is applied.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "plan",
+          "applied",
+          "version"
+        ],
+        "title": "WriteOutput",
+        "type": "object"
+      }
+    },
+    {
+      "description": "Replace exact strings in a Page; each `old` must match exactly once.",
+      "input_schema": {
+        "$defs": {
+          "Replacement": {
+            "description": "One exact-string replacement: `old` must occur exactly once in the Page.",
+            "properties": {
+              "new": {
+                "type": "string"
+              },
+              "old": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "old",
+              "new"
+            ],
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Replace exact strings in a Page. All replacements apply, or none do.",
+        "properties": {
+          "base_version": {
+            "description": "The `version` you read; if the Page changed since, nothing is written (`conflict`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dry_run": {
+            "default": false,
+            "description": "Return the Plan without applying it.",
+            "type": "boolean"
+          },
+          "edits": {
+            "description": "Replacements, each matched against the Page as it is now.",
+            "items": {
+              "$ref": "#/$defs/Replacement"
+            },
+            "type": "array"
+          },
+          "page": {
+            "description": "Page Path.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "page",
+          "edits"
+        ],
+        "title": "EditPageInput",
+        "type": "object"
+      },
+      "kind": "mutation",
+      "name": "edit_page",
+      "output_schema": {
+        "$defs": {
+          "Edit": {
+            "description": "One file edit. Paths are relative to the Wiki root.",
+            "oneOf": [
+              {
+                "description": "Create a new file.",
+                "properties": {
+                  "content": {
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "create",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "content"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Splice an existing file. Every byte outside the splices is unchanged.",
+                "properties": {
+                  "base_version": {
+                    "description": "Hash of the file this edit was planned against.",
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "modify",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "splices": {
+                    "description": "Non-overlapping byte ranges of the original file, in order.",
+                    "items": {
+                      "$ref": "#/$defs/Splice"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "base_version",
+                  "splices"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "Plan": {
+            "properties": {
+              "edits": {
+                "items": {
+                  "$ref": "#/$defs/Edit"
+                },
+                "type": "array"
+              },
+              "warnings": {
+                "items": {
+                  "$ref": "#/$defs/Warning"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "edits",
+              "warnings"
+            ],
+            "type": "object"
+          },
+          "Splice": {
+            "properties": {
+              "new": {
+                "type": "string"
+              },
+              "old": {
+                "type": "string"
+              },
+              "range": {
+                "description": "Byte range `[start, end)` in the original file.",
+                "items": {
+                  "format": "uint",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              }
+            },
+            "required": [
+              "range",
+              "old",
+              "new"
+            ],
+            "type": "object"
+          },
+          "Warning": {
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "message"
+            ],
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Result of a content write: the Plan and the Page's version afterwards.",
+        "properties": {
+          "applied": {
+            "type": "boolean"
+          },
+          "path": {
+            "type": "string"
+          },
+          "plan": {
+            "$ref": "#/$defs/Plan"
+          },
+          "version": {
+            "description": "The Page's version once the Plan is applied.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "plan",
+          "applied",
+          "version"
+        ],
+        "title": "WriteOutput",
         "type": "object"
       }
     }
