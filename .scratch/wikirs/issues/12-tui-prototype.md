@@ -25,3 +25,5 @@ Resolved 2026-09-26 by prototype. The prototype is [12-tui-layout](../prototypes
 2. **Editing**: `$EDITOR` hand-off is the main way to edit, and the inline textarea is for quick fixes. Saves go through `write_page` with `base_version`, as in the GUI.
 3. **Operations**: both a `:` command line (the same names as the CLI, Tab completion) and the ctrl-k generated palette. The keys that get custom UI match the GUI's list.
 4. **Rendering**: a markdown → ratatui renderer that walks pulldown-cmark events. Images show as placeholders and open in the system viewer. `ratatui-image` is the candidate if inline images come later.
+
+**Validated 2026-09-28**: the user ran the prototype interactively (palette, link following/autocomplete, editing, changed-on-disk flow). Both the layout and the behaviour were confirmed as expected.

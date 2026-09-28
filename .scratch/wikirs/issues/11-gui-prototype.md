@@ -36,3 +36,5 @@ Resolved 2026-09-26 by prototype. The prototype is [11-gui-layout](../prototypes
    Everything else is palette-only.
 4. **Changed on disk**: keep the banner. Compare becomes a real diff in the build.
 5. **Findings**: gpui-kit's preview needs plugins for wikilinks and frontmatter, and local images are still blank (#2527). `[[` autocomplete works through its `CompletionProvider`. The first build takes about 1.5 min.
+
+**Validated 2026-09-28**: the user ran the prototype interactively (palette, link following/autocomplete, editing, changed-on-disk flow). Both the layout and the behaviour were confirmed as expected.
