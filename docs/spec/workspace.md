@@ -47,6 +47,7 @@ Adapters depend only on `wikirs-core` (and `wikirs-forms`), never on each other,
 | | `tui` | `wikirs-tui` (ratatui) |
 | | `gui` | `wikirs-gui` (gpui, gpui-kit) |
 | `wikirs-core` | `clap` | derives `clap::Args` on Inputs through `cfg_attr`. Turned on by `wikirs-cli` |
+| `wikirs-core` | `test-hooks` | compiles in fault injection for tests (e.g. `WIKIRS_TEST_CRASH_AFTER_EDITS`, see [testing.md](testing.md)). Never enabled in release builds |
 
 - `--no-default-features` builds a **headless, CLI-only** binary, with no gpui and no tokio.
 - A subcommand whose feature is off still appears in `--help`, marked "not built in".

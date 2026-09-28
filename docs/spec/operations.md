@@ -10,6 +10,7 @@ How each Interface exposes these Operations is in [interfaces.md](interfaces.md)
 
 - **Query**: reads the Wiki or the Index; never changes a file.
 - **Mutation**: changes files in the Wiki. Every mutation takes `dry_run: bool` and returns the **Plan** it would apply (dry run) or did apply. Apply recomputes the Plan; it never accepts one from the caller. A Plan is applied as one unit; there is no cross-Operation batch.
+- **Maintenance**: changes only derived state (the Index), never a Wiki file, so it has no Plan or `dry_run` (`rebuild_index` only).
 - **Subscription**: a stream of events (`watch` only).
 
 Granularity is one Operation per user intent, with reads kept cheap and single-purpose: a GUI opening a Page calls `get_page`, `backlinks` and `children` separately.
@@ -24,21 +25,21 @@ Granularity is one Operation per user intent, with reads kept cheap and single-p
 - **Plan**: `{ edits: [Edit], warnings: [Warning] }`.
   - **Edit**: `create(path, content) | modify(path, base_version, splices: [{range, old, new}]) | move(from, to) | delete(path)`. Splices are byte ranges into the original file; every other byte is unchanged.
 - **Warning**: non-fatal note in a result or Plan, e.g. `link_will_break{from, link}`, `case_fallback`, `mixed_case_tag`, `heading_missing`.
-- **Diagnostic**: `{ kind, page, range, message }` where `kind` is `broken_link | heading_missing | case_fallback | mixed_case_tag`.
+- **Diagnostic**: `{ kind, page, range, message }` where `kind` is `broken_link | heading_missing | case_fallback | mixed_case_tag | unrecovered_edit` (an edit from a crashed Plan that journal recovery left alone because the file had changed; see [process-model.md](process-model.md#mutations)).
 - **LinkStatus**: `ok | broken | heading_missing | case_fallback`.
 
 ## Errors
 
-A closed set. Each entry below lists which it can return; `Io` and `Internal` are always possible and not repeated. The wire format, `details` and the mapping onto each Interface are in [errors.md](errors.md).
+A closed set. Each entry below lists which it can return. `Io` and `Internal` are always possible, and every mutation can also return `Conflict` (lock timeout, or a file changed between planning and applying); these aren't repeated. The wire format, `details` and the mapping onto each Interface are in [errors.md](errors.md).
 
 | Error | Meaning |
 |---|---|
-| `NotFound` | Target Page, Attachment, Tag or config key does not exist |
+| `NotFound` | Target Page, Attachment, Tag, config key or Wiki does not exist |
 | `AlreadyExists` | Target path is taken |
 | `CaseConflict` | Path differs from an existing one only by case |
 | `InvalidPath` | Malformed path, or a move into its own subtree |
 | `InvalidInput` | Any other invalid argument |
-| `Conflict` | File changed since `base_version`, or since the Plan was computed |
+| `Conflict` | File changed since `base_version` or since the Plan was computed, or the Wiki's write lock timed out |
 | `NoMatch` / `AmbiguousMatch` | `edit_page`: an `old` string matched zero / several times |
 | `Io` | Filesystem failure |
 | `Internal` | A bug: a panic caught by the registry, or a broken invariant |
@@ -51,9 +52,9 @@ Warnings are never errors. On JSON Interfaces every Output is wrapped as `{ resu
 |---|---|---|---|---|
 | `init` | mutation | — | Plan (creates `.wikirs/config.toml`) | `AlreadyExists` |
 | `get_config` | query | `key?` | value, or all settings with their source (`wiki` / `machine` / default) | `NotFound` |
-| `set_config` | mutation | `key, value \| null, scope: wiki \| machine` | Plan | `NotFound`, `InvalidInput` |
+| `set_config` | mutation | `key, value \| null, scope: wiki \| machine` | Plan (for `machine`, the edit targets the machine-settings file outside the Wiki) | `NotFound`, `InvalidInput` |
 
-Operations take no `wiki` argument: the Wiki is the process's (or GUI window's) context, see [wiki-selection.md](wiki-selection.md). `init` is the only Operation that runs without a resolved Wiki.
+Operations take no `wiki` argument: the Wiki is the process's (or GUI window's) context, see [wiki-selection.md](wiki-selection.md). `init` is the only Operation whose root isn't resolved the usual way: it targets `--wiki` / `WIKIRS_WIKI`, else the cwd, with no walk-up.
 
 ## Pages
 
@@ -131,7 +132,7 @@ Attachments have their own move and delete because an Attachment path and a Page
 
 | Operation | Kind | Inputs | Output | Errors |
 |---|---|---|---|---|
-| `index_status` | query | — | `{ pages, links, tags, last_updated, stale, skipped: [{ path, reason: symlink \| non_utf8 \| case_clash }] }` | — |
+| `index_status` | query | — | `{ root, cache_dir, pages, links, tags, last_updated, stale, watcher: native \| poll \| none, skipped: [{ path, reason: symlink \| non_utf8 \| case_clash }], unrecovered_edits: [{ path, edit }] }` | — |
 | `rebuild_index` | maintenance | — | `index_status` after rebuild | — |
 
 `rebuild_index` touches only derived state, so it has no Plan or `dry_run`. There is no refresh Operation: queries bring the Index up to date themselves (mechanism: process model).
@@ -149,6 +150,6 @@ Attachments have their own move and delete because an Attachment path and a Page
 
 ## Not in the catalogue
 
-- Rendering a Page to HTML: presentation, not a Wiki action. Reconsidered with import/export.
+- Rendering a Page to HTML, import and export: out of scope for this spec (see the map), and left to a later effort. Any of them can be added through the registry.
 - Batch/transaction across Operations.
 - A separate merge-Tag, create-Space, reparent or create-from-Broken-Link Operation (each is covered above).

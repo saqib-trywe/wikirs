@@ -29,7 +29,7 @@ Every adapter declares `local_fs: bool`:
 
 A `local_path` input (`add_attachment.source`, `read_attachment.as`) to an adapter without `local_fs` fails with `InvalidInput`.
 
-`serve` and `mcp` also take `--read-only`, which sets `mutations: false`. Their catalogue then lists only queries (plus `watch`), and HTTP mutation calls get 403 `forbidden`. See [http-security.md](http-security.md#read-only-mode).
+`serve` and `mcp` also take `--read-only`, which sets `mutations: false`. Their catalogue then lists only queries, maintenance (`rebuild_index`, which never touches a Wiki file) and `watch`, and HTTP mutation calls get 403 `forbidden`. See [http-security.md](http-security.md#read-only-mode).
 
 ## CLI
 
@@ -42,7 +42,7 @@ A `local_path` input (`add_attachment.source`, `read_attachment.as`) to an adapt
 
 | Route | Meaning |
 |---|---|
-| `POST /ops/{name}` | JSON Input → JSON Output (queries and mutations) |
+| `POST /ops/{name}` | JSON Input → JSON Output (queries, mutations and maintenance) |
 | `GET /ops` | the catalogue |
 | `GET /ops/watch?scope=…` | `watch` as Server-Sent Events |
 | `/mcp` | MCP Streamable HTTP, mounted on the same router |
@@ -51,9 +51,10 @@ Binding, auth, Origin/Host checks and read-only mode are in [http-security.md](h
 
 ## MCP (`wikirs mcp` over stdio; `/mcp` under `serve`), rmcp
 
-- **Tools**: every query and mutation, registered at runtime from the registry (`ToolRoute::new_dyn`, `Tool::new` with the registry schema).
+- **Tools**: every query, mutation and maintenance Operation, registered at runtime from the registry (`ToolRoute::new_dyn`, `Tool::new` with the registry schema).
   - Queries carry `readOnlyHint`.
   - `delete_page`, `delete_attachment`, `move_page`, `move_attachment` and `rename_tag` carry `destructiveHint`.
+  - `rebuild_index` carries neither hint: it rewrites only the disposable Index.
 - **Resources**: a hand-written, logic-free projection of the read Operations.
 
   | Resource | URI template | Backed by |
@@ -82,7 +83,7 @@ Binding, auth, Origin/Host checks and read-only mode are in [http-security.md](h
    - MCP tools, plus resources/notifications for `watch`
    - GUI and TUI palette entries
 
-   Adapters with `mutations: false` are checked against the query subset. The form renderer must support every schema shape used by any Input. A failure names the Interface and the Operation.
+   Adapters with `mutations: false` are checked against the subset of queries, maintenance and `watch`. The form renderer must support every schema shape used by any Input. A failure names the Interface and the Operation.
 2. **Behaviour**: one scenario suite (create → link → move → backlinks → tag → rename_tag → delete, with dry runs) runs against a fixture Wiki through the core, CLI (in-process, `--json`), HTTP (tower `oneshot`) and MCP (in-process transport). It asserts identical JSON Outputs and error kinds.
 3. **Contract snapshot**: a golden file of the catalogue JSON.
 

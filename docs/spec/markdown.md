@@ -44,4 +44,4 @@ Parsed by pulldown-cmark in `wikirs-core`:
 
 Unsupported or malformed syntax never causes an error or a `check` diagnostic.
 
-A static HTML export (still in the map's Not yet specified) will decide separately whether raw HTML passes through.
+A static HTML export is out of scope for this spec. If one is built later, it will decide separately whether raw HTML passes through.

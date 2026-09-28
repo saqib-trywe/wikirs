@@ -17,7 +17,7 @@ Alternatives considered for the representation:
 - **Registry.** Each Operation is a struct implementing `trait Operation { NAME, KIND, Input, Output, run(&Wiki, Input) }`. One `operations![...]` declarative macro lists them all and generates the erased registry: name → kind, description, input and output schemas, and a JSON-in/JSON-out dispatch. Registering an Operation happens in exactly one place.
 - **One schema.** Input and Output types derive `serde` and `schemars` (plus `clap::Args` on Inputs). Doc comments are the descriptions. Nothing else describes the contract.
 - **Generated adapters.** The CLI subcommands, the HTTP RPC routes (`POST /ops/{name}`), and the MCP tools (added at runtime) are all generated from the registry, and each Operation's name is used unchanged on every Interface. The GUI and TUI call typed Operations in-process, and each has a command palette generated from the registry, which gives them a floor of parity. Bespoke UI sits on top of it.
-- **Thin adapters.** An adapter may only parse its transport into an Input, enforce capabilities (`local_fs`), render an Output or Error, and bridge `watch`. Any behaviour a user could notice belongs in an Operation.
+- **Thin adapters.** An adapter may only parse its transport into an Input, enforce capabilities (`local_fs`, and `mutations` for read-only mode), render an Output or Error, and bridge `watch`. Any behaviour a user could notice belongs in an Operation.
 - **Parity test** in three layers:
   1. **Coverage**: every registry Operation is exposed by every adapter, and the schema-form renderer supports every schema shape in use.
   2. **Behaviour**: one scenario suite runs through the core, CLI, HTTP and MCP and asserts identical JSON and error kinds.

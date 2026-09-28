@@ -7,7 +7,7 @@ The MCP Streamable HTTP transport requires servers to validate `Origin` (DNS reb
 ## Binding
 
 - **Default**: `127.0.0.1` and `[::1]`, port **4747**. `--port 0` picks a free port, and the URL is printed.
-- **Non-loopback** `--bind` requires `--allow-remote` **and** a token. `serve` refuses to start otherwise, and warns that traffic is unencrypted.
+- **Non-loopback** `--bind` requires `--allow-remote`; `serve` refuses to start without it. Token auth is then always on (a token is generated if none exists, and printed), and `serve` warns that traffic is unencrypted.
 - **No built-in TLS.** Remote access goes through an SSH tunnel, Tailscale or a reverse proxy.
 
 ## Authentication
@@ -34,8 +34,8 @@ There's no rate limiting (single user), and SSE / `watch` connections aren't cap
 
 `serve --read-only` and `mcp --read-only` set the adapter capability `mutations: false`, alongside `local_fs`:
 
-- **MCP** lists only query tools. Resources and notifications stay available.
-- **HTTP**: `GET /ops` lists only queries, and a mutation call gets 403 `forbidden`. `watch` stays available.
+- **MCP** lists only query tools and `rebuild_index` (maintenance never touches a Wiki file). Resources and notifications stay available.
+- **HTTP**: `GET /ops` lists only queries and `rebuild_index`, and a mutation call gets 403 `forbidden`. `watch` stays available.
 
 The contract is the same and only the policy differs. The parity test takes the capability into account.
 

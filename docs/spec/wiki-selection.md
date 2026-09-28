@@ -23,7 +23,7 @@ First match wins:
 
 **`mcp`** skips step 3 and ignores MCP `roots`: an MCP client's cwd is unpredictable, and guessing could silently point an agent at the wrong Wiki. It uses only the flag, env var or `default_wiki`, and otherwise fails.
 
-**`init`** is the one Operation that runs without a resolved Wiki. It targets `--wiki` / `WIKIRS_WIKI` if given, and otherwise the cwd.
+**`init`** skips this order: it targets `--wiki` / `WIKIRS_WIKI` if given, and otherwise the cwd (no walk-up, since it creates the `.wikirs/` that walk-up looks for).
 
 The chosen root is shown by `--verbose` and in `index_status`.
 
@@ -36,7 +36,7 @@ Named Wikis let one MCP client config (`wikirs mcp --wiki notes`) work on every 
 
 ## Folders without `.wikirs/`
 
-They can be opened, but only explicitly: `--wiki`, the env var, `default_wiki`, or the GUI's Open Folder. Nothing is created in them until a setting is saved or `init` runs. Walk-up never guesses a Wiki from a folder of `.md` files.
+They can be opened, but only explicitly: `--wiki`, the env var, `default_wiki`, or the GUI's Open Folder. Nothing is created in them until a `wiki`-scope setting is saved or `init` runs. (Machine settings live outside the Wiki, so saving one creates nothing inside it.) Walk-up never guesses a Wiki from a folder of `.md` files.
 
 ## User-level files (per machine, outside any Wiki)
 

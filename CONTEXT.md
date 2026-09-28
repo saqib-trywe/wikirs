@@ -49,7 +49,7 @@ A Link whose target Page or Attachment does not exist. It is allowed and reporte
 _Avoid_: Dead link, red link, dangling link
 
 **Backlink**:
-A Link viewed from its target: the set of Pages that link to a given Page.
+A Link viewed from its target: the set of Pages that link to a given Page or Attachment.
 _Avoid_: Inbound link, mention
 
 **Tag**:
