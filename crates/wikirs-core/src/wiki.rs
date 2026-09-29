@@ -372,13 +372,17 @@ mod tests {
     fn roots_resolve_in_the_documented_order() {
         let dir = tempfile::tempdir().unwrap();
         let (home, config) = (dir.path().join("w"), dir.path().join("config"));
-        let inner = home.join("a/b");
+        let inner = home.join("a").join("b");
         std::fs::create_dir_all(home.join(".wikirs")).unwrap();
         std::fs::create_dir_all(&inner).unwrap();
         std::fs::create_dir_all(&config).unwrap();
         let resolve = |flag: Option<&str>, env: Option<&str>, discovery| {
             resolve_root(flag, env, &inner, discovery, &config)
         };
+        // Absolute paths elsewhere, as strings (`--wiki` values).
+        let abs = |name: &str| dir.path().join(name);
+        let text = |path: &Path| path.to_str().unwrap().to_string();
+        let (x, y, n) = (abs("x"), abs("y"), abs("n"));
 
         assert_eq!(
             resolve(None, None, Discovery::Cli).unwrap(),
@@ -393,33 +397,29 @@ mod tests {
             "init: the cwd"
         );
         assert_eq!(
-            resolve(Some("/x"), Some("/y"), Discovery::Init).unwrap(),
-            PathBuf::from("/x"),
+            resolve(Some(&text(&x)), Some(&text(&y)), Discovery::Init).unwrap(),
+            x,
             "the flag beats the env var"
         );
-        assert_eq!(
-            resolve(None, Some("/y"), Discovery::Cli).unwrap(),
-            PathBuf::from("/y")
-        );
+        assert_eq!(resolve(None, Some(&text(&y)), Discovery::Cli).unwrap(), y);
 
+        // TOML literal strings, so Windows backslashes need no escaping.
         std::fs::write(
             config.join("config.toml"),
-            "default_wiki = \"notes\"\n[wikis]\nnotes = \"/n\"\n\".n\" = \"/dot\"\n",
+            format!(
+                "default_wiki = \"notes\"\n[wikis]\nnotes = '{}'\n\".n\" = '{}'\n",
+                text(&n),
+                text(&abs("dot"))
+            ),
         )
         .unwrap();
-        assert_eq!(
-            resolve(None, None, Discovery::Mcp).unwrap(),
-            PathBuf::from("/n")
-        );
+        assert_eq!(resolve(None, None, Discovery::Mcp).unwrap(), n);
         assert_eq!(
             resolve(None, None, Discovery::Cli).unwrap(),
             home,
             "walk-up comes first"
         );
-        assert_eq!(
-            resolve(Some("notes"), None, Discovery::Cli).unwrap(),
-            PathBuf::from("/n")
-        );
+        assert_eq!(resolve(Some("notes"), None, Discovery::Cli).unwrap(), n);
         assert_eq!(
             resolve(Some("./notes"), None, Discovery::Cli).unwrap(),
             inner.join("./notes"),

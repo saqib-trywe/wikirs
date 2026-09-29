@@ -318,8 +318,10 @@ mod tests {
         let machine = wiki.machine_file().display().to_string();
         assert_eq!(out["result"]["plan"]["edits"][0]["path"], machine.as_str());
         let text = std::fs::read_to_string(wiki.machine_file()).unwrap();
-        assert!(
-            text.contains(&format!("root = {:?}", wiki.root().display().to_string())),
+        let recorded: toml_edit::DocumentMut = text.parse().unwrap();
+        assert_eq!(
+            recorded["root"].as_str(),
+            Some(wiki.root().display().to_string().as_str()),
             "{text}"
         );
         assert_eq!(
