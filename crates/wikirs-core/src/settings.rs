@@ -371,6 +371,12 @@ impl Settings {
         self.get("search.stemming") == "english"
     }
 
+    /// Whether long-lived processes poll the files instead of watching natively.
+    #[must_use]
+    pub fn watcher_poll(&self) -> bool {
+        self.get("watcher") == "poll"
+    }
+
     /// The per-Wiki cache dir override, if set.
     #[must_use]
     pub fn cache_dir(&self) -> Option<PathBuf> {

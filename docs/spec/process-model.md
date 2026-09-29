@@ -58,8 +58,10 @@ Corruption is detected when SQLite reports it, not by an integrity check on ever
 
 ## Watcher
 
-- `notify` + `notify-debouncer-full`, with a 200 ms debounce.
-- Hidden and ignored paths are filtered out before debouncing.
+- `notify` + `notify-debouncer-full`, with a 200 ms debounce. `watch`, and the `mcp` process at start, start the watcher. One-shot CLI calls never do.
+- Each debounced batch hashes only the files it names, plus every known file under a named folder and every file under a new one. Hidden and ignored paths are dropped.
+- A batch with a create or rename also checks that every known file still exists. Some backends report only a move's new path: FSEvents folds a rename of a file it once saw created into a create.
+- An overflow or watcher error compares every file.
 - The machine settings have `watcher = "native" | "poll"`, default `native`. `poll` uses `notify`'s PollWatcher at a 2 s interval.
 - If the native watcher fails to start, the process falls back to poll and reports it in `index_status`.
 - Networked filesystems aren't detected automatically.
@@ -85,7 +87,7 @@ Corruption is detected when SQLite reports it, not by an integrity check on ever
 ## `watch` events
 
 - **Own mutations:** emitted right after the Index commit, including real `page_moved` events (the Plan knows about moves).
-- **Everything else** (other wikirs processes, external editors): emitted by the watcher → Index update path, only when the Index actually changed. This also filters out the echo of the process's own writes.
+- **Everything else** (other wikirs processes, external editors): emitted by the watcher → Index update path, only when a file differs from the version **this process** last saw. It isn't compared with the shared Index: another process's mutation has already updated the Index by the time our watcher sees its files, and its changes must still reach our subscribers. A mutation records its files as seen under the same lock the watcher compares under, which filters out the echo of the process's own writes.
 - **External moves** arrive as delete + create and aren't paired.
 - **Batching:** `index_updated` is emitted once per batch.
 

@@ -7,7 +7,12 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::{Error, Result, index::Index, settings::Settings};
+use crate::{
+    Error, Result,
+    index::{Index, Scope},
+    settings::Settings,
+    watch::{Hub, WatchEvent, Watcher},
+};
 
 /// How long a mutation waits for another process's write lock (ADR 0006).
 const LOCK_TIMEOUT: Duration = Duration::from_secs(5);
@@ -20,6 +25,10 @@ pub struct Wiki {
     index: Arc<Mutex<Index>>,
     /// The adapter can read and write local paths (interfaces.md#capabilities).
     local_fs: bool,
+    /// `watch` subscribers and what the watcher last saw.
+    hub: Arc<Hub>,
+    /// This handle's file watcher, once started (long-lived processes).
+    watcher: Arc<Mutex<Option<Watcher>>>,
 }
 
 impl Wiki {
@@ -59,6 +68,8 @@ impl Wiki {
             machine_file,
             index: Arc::new(Mutex::new(index)),
             local_fs: true,
+            hub: Arc::default(),
+            watcher: Arc::default(),
         })
     }
 
@@ -103,6 +114,33 @@ impl Wiki {
         self.index
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// Subscribes to change events in `scope`: this handle's own mutations
+    /// always, and other writers' changes once [`Wiki::start_watcher`] runs.
+    /// Events arrive until the receiver is dropped.
+    #[must_use]
+    pub fn watch(&self, scope: Scope) -> std::sync::mpsc::Receiver<WatchEvent> {
+        self.hub.subscribe(scope)
+    }
+
+    pub(crate) fn hub(&self) -> &Hub {
+        &self.hub
+    }
+
+    pub(crate) fn watcher_slot(&self) -> MutexGuard<'_, Option<Watcher>> {
+        self.watcher
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// This handle without its watcher, for the watcher's own callback (so
+    /// the watcher doesn't keep itself alive).
+    pub(crate) fn detached(&self) -> Self {
+        Self {
+            watcher: Arc::default(),
+            ..self.clone()
+        }
     }
 
     /// Per-Wiki cache dir: Index, write lock, journal (process-model.md).

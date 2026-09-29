@@ -172,9 +172,12 @@ Attachments have their own move and delete because an Attachment path and a Page
 | `watch` | subscription | `scope?` | stream of `{ kind, path, from?, version? }` |
 
 - `kind`: `page_created | page_modified | page_deleted | page_moved | attachment_changed | index_updated`.
+- `path` is a Page Path for Page events and an AttachmentPath for `attachment_changed`, and is absent for `index_updated`. `from` is set on a move made by a wikirs Plan (`page_moved`, or an `attachment_changed` from `move_attachment`). `version` is absent once the file is gone.
+- `scope` keeps an event if its `path` or `from` is in scope. A subscriber gets `index_updated` only after a batch with events in its scope.
 - Events carry no content; subscribers call `get_page` as needed.
 - A process receives events for its own mutations too. A multi-file Plan emits one event per affected path, then `index_updated`.
 - How changes are detected (watcher, debounce, other processes) is decided by the process model.
+- Called as a plain Operation (`OpInfo::call`), `watch` fails with `InvalidInput`: each adapter streams it instead (CLI: JSON Lines until stopped).
 
 ## Not in the catalogue
 

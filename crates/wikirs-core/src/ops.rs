@@ -18,6 +18,7 @@ use crate::{
     markdown,
     mutations::{DeletePage, MovePage, RenameTag, SetPageMeta, TagPage, UntagPage},
     plan::{Edit, Plan, Splice, UnrecoveredEdit, Warning, mutate, unrecovered_edits, version_of},
+    watch::Watch,
     wiki::{PagePath, check_case_conflict, slugify},
 };
 
@@ -53,6 +54,7 @@ crate::operations![
     Search,
     IndexStatus,
     RebuildIndex,
+    Watch,
 ];
 
 // ------------------------------------------------------------------ get_page
@@ -593,7 +595,7 @@ pub struct IndexStatusOutput {
     pub last_updated: Option<i64>,
     /// Whether the Index may be behind the files (always false right after open).
     pub stale: bool,
-    /// File watching in this process: `none` (one-shot) until watchers exist.
+    /// File watching in this handle: `native`, `poll`, or `none` (one-shot CLI calls).
     pub watcher: String,
     pub skipped: Vec<Skipped>,
     pub unrecovered_edits: Vec<UnrecoveredEdit>,
@@ -623,7 +625,7 @@ fn status(wiki: &Wiki) -> Result<IndexStatusOutput> {
         tags: index.count_tags()?,
         last_updated: index.last_updated()?,
         stale: false,
-        watcher: "none".into(),
+        watcher: wiki.watcher_mode().as_str().into(),
         skipped: index.skipped()?,
         unrecovered_edits: unrecovered_edits(wiki),
     })

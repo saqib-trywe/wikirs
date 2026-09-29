@@ -93,6 +93,9 @@ impl ServerHandler for WikiServer {
 
 /// Serves `wiki` over MCP on stdio until the client disconnects.
 pub fn run_stdio(wiki: Wiki) -> anyhow::Result<()> {
+    // A long-lived process keeps the Index fresh by watching (process-model.md).
+    // Without a watcher, queries still work: `index_status` reports `none`.
+    let _ = wiki.start_watcher();
     tokio::runtime::Runtime::new()?.block_on(async {
         let service = WikiServer::new(wiki)
             .serve(rmcp::transport::stdio())

@@ -15,7 +15,12 @@ use std::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::{Error, Result, Wiki, error::ChangedFile};
+use crate::{
+    Error, Result, Wiki,
+    error::ChangedFile,
+    index::indexable,
+    watch::{Change, net_changes},
+};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Plan {
@@ -252,6 +257,9 @@ pub fn mutate<T>(
 
     let journal = Journal::new(wiki.root(), &plan)?;
     journal.write(wiki)?;
+    // The watcher waits until the Plan is applied and recorded as seen, so it
+    // never reports this process's own writes.
+    let mut seen = wiki.hub().seen();
     for (applied, entry) in journal.entries.iter().enumerate() {
         crash_hook(applied);
         entry
@@ -268,11 +276,32 @@ pub fn mutate<T>(
         .flat_map(|e| e.edit.paths())
         .collect();
     let ignore = wiki.settings().ignore();
-    let _ = wiki.index().refresh(
-        wiki.root(),
-        &touched.into_iter().collect::<Vec<_>>(),
-        &ignore,
-    );
+    let updated = wiki
+        .index()
+        .refresh(
+            wiki.root(),
+            &touched.into_iter().collect::<Vec<_>>(),
+            &ignore,
+        )
+        .is_ok();
+
+    let events: Vec<Change> = net_changes(journal.entries.iter().map(JournalEntry::change))
+        .into_iter()
+        .filter(|c| indexable(&c.path, &ignore))
+        .collect();
+    if let Some(seen) = seen.as_mut() {
+        for c in &events {
+            if let Some(from) = &c.from {
+                seen.remove(from);
+            }
+            match &c.after {
+                Some(v) => seen.insert(c.path.clone(), v.clone()),
+                None => seen.remove(&c.path),
+            };
+        }
+    }
+    drop(seen);
+    wiki.hub().publish(&events, updated);
     Ok((plan, value))
 }
 
@@ -423,6 +452,15 @@ enum State {
 }
 
 impl JournalEntry {
+    /// This edit as `(from, path, before, after)` for [`net_changes`].
+    fn change(&self) -> (Option<String>, String, Option<String>, Option<String>) {
+        let (from, path) = match &self.edit {
+            Edit::Move { from, to } => (Some(from.clone()), to.clone()),
+            other => (None, other.paths()[0].to_string()),
+        };
+        (from, path, self.before.clone(), self.after.clone())
+    }
+
     fn state(&self, root: &Path, cache_dir: &Path) -> State {
         let (before_here, after_here) = match &self.edit {
             Edit::Create { path, .. }

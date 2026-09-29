@@ -276,7 +276,23 @@ impl Index {
                         size: size_of(&meta),
                         mtime: mtime_of(&meta),
                     };
-                    upsert(&tx, path, &file, &version_of(&bytes), &bytes)?;
+                    let hash = version_of(&bytes);
+                    // Several watchers (processes) refresh the same edit: only the first reparses.
+                    let known: Option<String> = tx
+                        .query_row("SELECT hash FROM files WHERE path = ?1", [path], |r| {
+                            r.get(0)
+                        })
+                        .optional()
+                        .map_err(|e| db_err(&e))?;
+                    if known.as_deref() == Some(hash.as_str()) {
+                        tx.execute(
+                            "UPDATE files SET size = ?2, mtime = ?3 WHERE path = ?1",
+                            params![path, file.size, file.mtime],
+                        )
+                        .map_err(|e| db_err(&e))?;
+                    } else {
+                        upsert(&tx, path, &file, &hash, &bytes)?;
+                    }
                 }
                 _ => remove(&tx, path)?,
             }
@@ -306,6 +322,18 @@ impl Index {
             tx.commit().map_err(|e| db_err(&e))?;
         }
         self.reconcile(root, ignore)
+    }
+
+    /// Every indexed file (relative path) and its `Version`.
+    pub(crate) fn versions(&self) -> Result<HashMap<String, String>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT path, hash FROM files")
+            .map_err(|e| db_err(&e))?;
+        stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .map_err(|e| db_err(&e))?
+            .collect::<rusqlite::Result<_>>()
+            .map_err(|e| db_err(&e))
     }
 
     /// A canonical dump of everything derived from the files, for comparing
@@ -711,6 +739,18 @@ impl Scope {
         }
         (conds.join(" AND "), args)
     }
+
+    /// Whether the file at `file` (relative, with its extension) is in scope.
+    pub(crate) fn contains(&self, file: &str) -> bool {
+        let in_space = self.space.as_ref().is_none_or(|space| {
+            file == format!("{space}.md") || file.starts_with(&format!("{space}/"))
+        });
+        in_space
+            && self
+                .path_prefix
+                .as_ref()
+                .is_none_or(|prefix| file.starts_with(prefix.as_str()))
+    }
 }
 
 /// Which Pages a query covers (operations.md `Filter`).
@@ -905,11 +945,9 @@ fn mtime_of(meta: &fs::Metadata) -> i64 {
         .unwrap_or(0)
 }
 
-/// Walks the Wiki (not following symlinks, skipping hidden entries) and
-/// returns every file by relative path, plus what was skipped and why.
 /// Whether a scan would index the file at `rel`: inside the Wiki, with no
 /// hidden segment, and not (under) an ignored path.
-fn indexable(rel: &str, ignore: &Ignore) -> bool {
+pub(crate) fn indexable(rel: &str, ignore: &Ignore) -> bool {
     !Path::new(rel).is_absolute()
         && rel
             .split('/')
@@ -917,10 +955,31 @@ fn indexable(rel: &str, ignore: &Ignore) -> bool {
         && !ignore.matches_path(rel)
 }
 
+/// Every file a scan would index under the folder `rel_dir` (relative).
+pub(crate) fn files_under(root: &Path, rel_dir: &str, ignore: &Ignore) -> Vec<String> {
+    scan_from(root, rel_dir, ignore).0.into_keys().collect()
+}
+
+/// Walks the Wiki (not following symlinks, skipping hidden entries) and
+/// returns every file by relative path, plus what was skipped and why.
 fn scan(root: &Path, ignore: &Ignore) -> (HashMap<String, Scanned>, Vec<Skipped>) {
+    scan_from(root, "", ignore)
+}
+
+/// [`scan`], starting at the folder `rel_dir` (`""`: the root).
+fn scan_from(
+    root: &Path,
+    rel_dir: &str,
+    ignore: &Ignore,
+) -> (HashMap<String, Scanned>, Vec<Skipped>) {
     let mut files = HashMap::new();
     let mut skipped = Vec::new();
-    let mut dirs = vec![(root.to_path_buf(), String::new())];
+    let prefix = if rel_dir.is_empty() {
+        String::new()
+    } else {
+        format!("{rel_dir}/")
+    };
+    let mut dirs = vec![(root.join(rel_dir), prefix)];
     while let Some((dir, prefix)) = dirs.pop() {
         let Ok(entries) = fs::read_dir(&dir) else {
             continue;

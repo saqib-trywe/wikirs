@@ -30,6 +30,7 @@ percent-encoding = "2.3"
 toml_edit = "0.25"
 globset = "0.4"
 base64 = "0.23"
+notify-debouncer-full = "0.7"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

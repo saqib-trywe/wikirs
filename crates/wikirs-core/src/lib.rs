@@ -17,6 +17,7 @@ pub mod plan;
 mod registry;
 pub mod rewrite;
 pub mod settings;
+pub mod watch;
 mod wiki;
 
 pub use error::{ChangedFile, Error, ErrorKind, Result};

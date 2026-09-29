@@ -269,3 +269,80 @@ mod crash {
         );
     }
 }
+
+/// `wikirs watch` in its own process: external edits and another wikirs
+/// process's mutations each arrive once, as JSON Lines, within about a second.
+#[test]
+fn a_watching_process_hears_every_other_writer_once() {
+    use std::{
+        io::{BufRead, BufReader},
+        process::Stdio,
+        sync::mpsc,
+        time::{Duration, Instant},
+    };
+
+    let (_dir, wiki) = temp_wiki();
+    let mut child = wiki.cmd(&["watch"]).stdout(Stdio::piped()).spawn().unwrap();
+    let (tx, rx) = mpsc::channel::<Value>();
+    let stdout = child.stdout.take().unwrap();
+    std::thread::spawn(move || {
+        for line in BufReader::new(stdout).lines() {
+            let Ok(line) = line else { break };
+            if tx.send(serde_json::from_str(&line).unwrap()).is_err() {
+                break;
+            }
+        }
+    });
+    let batch = |within: Duration| -> Vec<String> {
+        let mut events = vec![rx.recv_timeout(within).expect("an event in time")];
+        events.extend(std::iter::from_fn(|| {
+            rx.recv_timeout(Duration::from_millis(600)).ok()
+        }));
+        events
+            .iter()
+            .map(|e| {
+                format!(
+                    "{} {}",
+                    e["kind"].as_str().unwrap(),
+                    e["path"].as_str().unwrap_or("")
+                )
+            })
+            .collect()
+    };
+
+    // There is no ready signal: touch a file until the watcher reports it.
+    let started = Instant::now();
+    let probe = wiki.root.join("probe.md");
+    loop {
+        std::fs::write(&probe, format!("{:?}", started.elapsed())).unwrap();
+        if rx.recv_timeout(Duration::from_millis(300)).is_ok() {
+            break;
+        }
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "the watcher never started: {:?}",
+            child.try_wait()
+        );
+    }
+    while rx.recv_timeout(Duration::from_millis(600)).is_ok() {}
+
+    std::fs::write(wiki.root.join("probe.md"), "# Edited outside\n").unwrap();
+    assert_eq!(
+        batch(Duration::from_secs(1)),
+        ["page_modified probe", "index_updated "]
+    );
+
+    assert!(
+        wiki.run(&["create-page", "--path", "theirs"])
+            .status
+            .success()
+    );
+    assert_eq!(
+        batch(Duration::from_secs(1)),
+        ["page_created theirs", "index_updated "],
+        "another wikirs process's Plan, heard once despite the shared Index"
+    );
+
+    child.kill().unwrap();
+    child.wait().unwrap();
+}

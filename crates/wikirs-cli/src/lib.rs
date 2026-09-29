@@ -4,11 +4,14 @@
 //! Walking skeleton: human output is pretty JSON; the per-type `Render` trait,
 //! `--input <json>` and unified-diff Plans come in later slices.
 
-use std::process::ExitCode;
+use std::{io::Write, process::ExitCode};
 
 use clap::{CommandFactory, Parser, Subcommand};
 use serde_json::Value;
-use wikirs_core::{Error, ErrorKind, Wiki};
+use wikirs_core::{
+    Error, ErrorKind, Wiki,
+    watch::{Watch, WatchInput},
+};
 
 #[derive(Debug, Parser)]
 #[command(name = "wikirs", version, about = "A local markdown wiki")]
@@ -52,8 +55,29 @@ pub fn run_operation(
     wiki: Result<Wiki, Error>,
     json: bool,
 ) -> ExitCode {
+    if let wikirs_core::Command::Watch(input) = command {
+        return run_watch(input, wiki, json);
+    }
     let outcome = wiki.and_then(|wiki| command.run(&wiki));
     print_outcome(&outcome, json)
+}
+
+/// `watch`: one JSON event per line on stdout, until stdout closes or the
+/// process is stopped.
+fn run_watch(input: WatchInput, wiki: Result<Wiki, Error>, json: bool) -> ExitCode {
+    // The handle owns the watcher and the subscription: it must outlive the loop.
+    let (events, _wiki) = match wiki.and_then(|wiki| Ok((Watch::subscribe(&wiki, input)?, wiki))) {
+        Ok(subscribed) => subscribed,
+        Err(err) => return print_outcome(&Err(err), json),
+    };
+    let mut out = std::io::stdout().lock();
+    for event in events {
+        let line = serde_json::to_string(&event).unwrap_or_default();
+        if writeln!(out, "{line}").and_then(|()| out.flush()).is_err() {
+            break;
+        }
+    }
+    ExitCode::SUCCESS
 }
 
 #[must_use]

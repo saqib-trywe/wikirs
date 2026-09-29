@@ -5270,7 +5270,7 @@ expression: "wikirs_core::catalogue()"
             "type": "array"
           },
           "watcher": {
-            "description": "File watching in this process: `none` (one-shot) until watchers exist.",
+            "description": "File watching in this handle: `native`, `poll`, or `none` (one-shot CLI calls).",
             "type": "string"
           }
         },
@@ -5538,7 +5538,7 @@ expression: "wikirs_core::catalogue()"
             "type": "array"
           },
           "watcher": {
-            "description": "File watching in this process: `none` (one-shot) until watchers exist.",
+            "description": "File watching in this handle: `native`, `poll`, or `none` (one-shot CLI calls).",
             "type": "string"
           }
         },
@@ -5555,6 +5555,107 @@ expression: "wikirs_core::catalogue()"
           "unrecovered_edits"
         ],
         "title": "IndexStatusOutput",
+        "type": "object"
+      }
+    },
+    {
+      "description": "Stream change events (Pages, Attachments, the Index) as they happen, from this process and every other writer.",
+      "input_schema": {
+        "$defs": {
+          "Scope": {
+            "additionalProperties": false,
+            "description": "Which part of the Wiki a query covers (operations.md `Scope`).",
+            "properties": {
+              "path_prefix": {
+                "description": "Only Pages whose Page Path starts with this.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "space": {
+                "description": "Only this Space: its home Page and everything under it.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "description": "Stream change events for the Wiki, or a part of it.",
+        "properties": {
+          "scope": {
+            "$ref": "#/$defs/Scope",
+            "description": "Only changes in this part of the Wiki."
+          }
+        },
+        "title": "WatchInput",
+        "type": "object"
+      },
+      "kind": "subscription",
+      "name": "watch",
+      "output_schema": {
+        "$defs": {
+          "EventKind": {
+            "oneOf": [
+              {
+                "enum": [
+                  "page_created",
+                  "page_modified",
+                  "page_deleted",
+                  "attachment_changed"
+                ],
+                "type": "string"
+              },
+              {
+                "const": "page_moved",
+                "description": "Only for moves made by a wikirs Plan; other moves are a delete and a create.",
+                "type": "string"
+              },
+              {
+                "const": "index_updated",
+                "description": "The Index took in a batch of changes: sent once, after the batch's events.",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "One change. Events carry no content: call `get_page` for it.",
+        "properties": {
+          "from": {
+            "description": "The old path of a move made by a wikirs Plan.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "$ref": "#/$defs/EventKind"
+          },
+          "path": {
+            "description": "Page Path for Page events, Attachment path for `attachment_changed`;\nabsent for `index_updated`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version": {
+            "description": "The file's new `Version`; absent once it's gone.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "WatchEvent",
         "type": "object"
       }
     }
