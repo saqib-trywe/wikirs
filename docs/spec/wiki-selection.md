@@ -47,6 +47,7 @@ They can be opened, but only explicitly: `--wiki`, the env var, `default_wiki`, 
 | `<state dir>/wikirs/recent.json` | the app | recently opened Wikis, and the GUI's last-session windows |
 
 - **Config** is always under `~/.config/wikirs/` (or `$XDG_CONFIG_HOME/wikirs/`) on every OS, including macOS and Windows, so it's in the one place users expect to find dotfiles.
+- `WIKIRS_CONFIG_DIR` replaces `~/.config/wikirs` (like `WIKIRS_CACHE_DIR` for the cache), so tests and CI never touch the user's settings.
 - **State** (`<state dir>`) and **cache** keep the OS conventions (e.g. `~/.local/state`, and `~/Library/Application Support` / `~/Library/Caches` on macOS).
 
 ## Machine settings

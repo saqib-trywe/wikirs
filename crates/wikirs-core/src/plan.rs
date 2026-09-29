@@ -211,9 +211,12 @@ pub fn mutate<T>(
         .iter()
         .flat_map(|e| e.edit.paths())
         .collect();
-    let _ = wiki
-        .index()
-        .refresh(wiki.root(), &touched.into_iter().collect::<Vec<_>>());
+    let ignore = wiki.settings().ignore();
+    let _ = wiki.index().refresh(
+        wiki.root(),
+        &touched.into_iter().collect::<Vec<_>>(),
+        &ignore,
+    );
     Ok((plan, value))
 }
 

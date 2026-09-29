@@ -5,6 +5,547 @@ expression: "wikirs_core::catalogue()"
 {
   "operations": [
     {
+      "description": "Make a folder a Wiki by creating `.wikirs/config.toml`, which also marks its root.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "description": "Make this folder a Wiki: create `.wikirs/config.toml`.",
+        "properties": {
+          "dry_run": {
+            "default": false,
+            "description": "Return the Plan without applying it.",
+            "type": "boolean"
+          }
+        },
+        "title": "InitInput",
+        "type": "object"
+      },
+      "kind": "mutation",
+      "name": "init",
+      "output_schema": {
+        "$defs": {
+          "Edit": {
+            "description": "One file edit. Paths are relative to the Wiki root.",
+            "oneOf": [
+              {
+                "description": "Create a new file.",
+                "properties": {
+                  "content": {
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "create",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "content"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Splice an existing file. Every byte outside the splices is unchanged.",
+                "properties": {
+                  "base_version": {
+                    "description": "Hash of the file this edit was planned against.",
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "modify",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "splices": {
+                    "description": "Non-overlapping byte ranges of the original file, in order.",
+                    "items": {
+                      "$ref": "#/$defs/Splice"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "base_version",
+                  "splices"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Move a file, unchanged, to a path that doesn't exist yet.",
+                "properties": {
+                  "from": {
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "move",
+                    "type": "string"
+                  },
+                  "to": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "from",
+                  "to"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Delete a file.",
+                "properties": {
+                  "op": {
+                    "const": "delete",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "Plan": {
+            "properties": {
+              "edits": {
+                "items": {
+                  "$ref": "#/$defs/Edit"
+                },
+                "type": "array"
+              },
+              "warnings": {
+                "items": {
+                  "$ref": "#/$defs/Warning"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "edits",
+              "warnings"
+            ],
+            "type": "object"
+          },
+          "Splice": {
+            "properties": {
+              "new": {
+                "type": "string"
+              },
+              "old": {
+                "type": "string"
+              },
+              "range": {
+                "description": "Byte range `[start, end)` in the original file.",
+                "items": {
+                  "format": "uint",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              }
+            },
+            "required": [
+              "range",
+              "old",
+              "new"
+            ],
+            "type": "object"
+          },
+          "Warning": {
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "message"
+            ],
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "applied": {
+            "type": "boolean"
+          },
+          "path": {
+            "description": "The settings file created, relative to the Wiki root.",
+            "type": "string"
+          },
+          "plan": {
+            "$ref": "#/$defs/Plan"
+          }
+        },
+        "required": [
+          "path",
+          "plan",
+          "applied"
+        ],
+        "title": "InitOutput",
+        "type": "object"
+      }
+    },
+    {
+      "description": "Read one setting or all of them, each with its value and source (`machine`, `wiki` or `default`).",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "description": "Read one setting, or all of them, with where each value comes from.",
+        "properties": {
+          "key": {
+            "description": "A setting, e.g. `links.syntax`; every setting if absent.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "title": "GetConfigInput",
+        "type": "object"
+      },
+      "kind": "query",
+      "name": "get_config",
+      "output_schema": {
+        "$defs": {
+          "ConfigScope": {
+            "description": "Which file a setting is written to.",
+            "oneOf": [
+              {
+                "const": "wiki",
+                "description": "`.wikirs/config.toml`, committed and shared by every machine.",
+                "type": "string"
+              },
+              {
+                "const": "machine",
+                "description": "This machine's settings for the Wiki, outside it, never synced.",
+                "type": "string"
+              }
+            ]
+          },
+          "Setting": {
+            "description": "One setting as `get_config` reports it.",
+            "properties": {
+              "description": {
+                "type": "string"
+              },
+              "key": {
+                "type": "string"
+              },
+              "scope": {
+                "$ref": "#/$defs/ConfigScope",
+                "description": "The file it belongs in; `wiki` settings can also be overridden per machine."
+              },
+              "source": {
+                "$ref": "#/$defs/Source"
+              },
+              "value": true
+            },
+            "required": [
+              "key",
+              "value",
+              "source",
+              "scope",
+              "description"
+            ],
+            "type": "object"
+          },
+          "Source": {
+            "description": "Where a setting's value came from.",
+            "enum": [
+              "wiki",
+              "machine",
+              "default"
+            ],
+            "type": "string"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "settings": {
+            "items": {
+              "$ref": "#/$defs/Setting"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "settings"
+        ],
+        "title": "GetConfigOutput",
+        "type": "object"
+      }
+    },
+    {
+      "description": "Set a setting in the Wiki's committed file or this machine's (`null` removes it). Machine settings override the Wiki's.",
+      "input_schema": {
+        "$defs": {
+          "ConfigScope": {
+            "description": "Which file a setting is written to.",
+            "oneOf": [
+              {
+                "const": "wiki",
+                "description": "`.wikirs/config.toml`, committed and shared by every machine.",
+                "type": "string"
+              },
+              {
+                "const": "machine",
+                "description": "This machine's settings for the Wiki, outside it, never synced.",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "description": "Set a setting in the Wiki's file or this machine's; `null` removes it.",
+        "properties": {
+          "dry_run": {
+            "default": false,
+            "description": "Return the Plan without applying it.",
+            "type": "boolean"
+          },
+          "key": {
+            "description": "A setting, e.g. `links.syntax`.",
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/$defs/ConfigScope",
+            "description": "`wiki` (the committed `.wikirs/config.toml`) or `machine` (this machine only)."
+          },
+          "value": {
+            "description": "The new value; `null` removes the setting from that file. On the CLI:\nJSON if it parses as JSON, else a string."
+          }
+        },
+        "required": [
+          "key",
+          "value",
+          "scope"
+        ],
+        "title": "SetConfigInput",
+        "type": "object"
+      },
+      "kind": "mutation",
+      "name": "set_config",
+      "output_schema": {
+        "$defs": {
+          "ConfigScope": {
+            "description": "Which file a setting is written to.",
+            "oneOf": [
+              {
+                "const": "wiki",
+                "description": "`.wikirs/config.toml`, committed and shared by every machine.",
+                "type": "string"
+              },
+              {
+                "const": "machine",
+                "description": "This machine's settings for the Wiki, outside it, never synced.",
+                "type": "string"
+              }
+            ]
+          },
+          "Edit": {
+            "description": "One file edit. Paths are relative to the Wiki root.",
+            "oneOf": [
+              {
+                "description": "Create a new file.",
+                "properties": {
+                  "content": {
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "create",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "content"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Splice an existing file. Every byte outside the splices is unchanged.",
+                "properties": {
+                  "base_version": {
+                    "description": "Hash of the file this edit was planned against.",
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "modify",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "splices": {
+                    "description": "Non-overlapping byte ranges of the original file, in order.",
+                    "items": {
+                      "$ref": "#/$defs/Splice"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "base_version",
+                  "splices"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Move a file, unchanged, to a path that doesn't exist yet.",
+                "properties": {
+                  "from": {
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "move",
+                    "type": "string"
+                  },
+                  "to": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "from",
+                  "to"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Delete a file.",
+                "properties": {
+                  "op": {
+                    "const": "delete",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "Plan": {
+            "properties": {
+              "edits": {
+                "items": {
+                  "$ref": "#/$defs/Edit"
+                },
+                "type": "array"
+              },
+              "warnings": {
+                "items": {
+                  "$ref": "#/$defs/Warning"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "edits",
+              "warnings"
+            ],
+            "type": "object"
+          },
+          "Splice": {
+            "properties": {
+              "new": {
+                "type": "string"
+              },
+              "old": {
+                "type": "string"
+              },
+              "range": {
+                "description": "Byte range `[start, end)` in the original file.",
+                "items": {
+                  "format": "uint",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              }
+            },
+            "required": [
+              "range",
+              "old",
+              "new"
+            ],
+            "type": "object"
+          },
+          "Warning": {
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "message"
+            ],
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "applied": {
+            "type": "boolean"
+          },
+          "key": {
+            "type": "string"
+          },
+          "plan": {
+            "$ref": "#/$defs/Plan"
+          },
+          "scope": {
+            "$ref": "#/$defs/ConfigScope"
+          }
+        },
+        "required": [
+          "key",
+          "scope",
+          "plan",
+          "applied"
+        ],
+        "title": "SetConfigOutput",
+        "type": "object"
+      }
+    },
+    {
       "description": "Read a Page: its raw markdown, Title and version.",
       "input_schema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",

@@ -13,7 +13,7 @@ use wikirs_core::{Kind, Wiki};
 fn temp_wiki() -> (tempfile::TempDir, Wiki) {
     let dir = tempfile::tempdir().unwrap();
     std::fs::create_dir(dir.path().join("wiki")).unwrap();
-    let wiki = Wiki::open_with_cache(dir.path().join("wiki"), dir.path().join("cache")).unwrap();
+    let wiki = Wiki::open_isolated(dir.path().join("wiki"), dir.path().join("cache")).unwrap();
     (dir, wiki)
 }
 
@@ -363,6 +363,51 @@ fn scenario() -> Vec<Step> {
             input: json!({}),
             cli: &["list-spaces"],
         },
+        Step {
+            op: "init",
+            input: json!({}),
+            cli: &["init"],
+        },
+        Step {
+            op: "init",
+            input: json!({}),
+            cli: &["init"],
+        },
+        Step {
+            op: "set_config",
+            input: json!({ "key": "links.syntax", "value": "wikilink", "scope": "wiki" }),
+            cli: &["set-config", "links.syntax", "wikilink", "--scope", "wiki"],
+        },
+        Step {
+            op: "set_config",
+            input: json!({ "key": "serve.port", "value": 8080, "scope": "machine" }),
+            cli: &["set-config", "serve.port", "8080", "--scope", "machine"],
+        },
+        Step {
+            op: "set_config",
+            input: json!({ "key": "serve.port", "value": 80, "scope": "wiki" }),
+            cli: &["set-config", "serve.port", "80", "--scope", "wiki"],
+        },
+        Step {
+            op: "set_config",
+            input: json!({ "key": "nope", "value": null, "scope": "machine" }),
+            cli: &["set-config", "nope", "null", "--scope", "machine"],
+        },
+        Step {
+            op: "set_config",
+            input: json!({ "key": "ignore", "value": ["zeta.md"], "scope": "wiki" }),
+            cli: &["set-config", "ignore", r#"["zeta.md"]"#, "--scope", "wiki"],
+        },
+        Step {
+            op: "list_pages",
+            input: json!({}),
+            cli: &["list-pages"],
+        },
+        Step {
+            op: "get_config",
+            input: json!({}),
+            cli: &["get-config"],
+        },
     ]
 }
 
@@ -388,50 +433,87 @@ fn normalize(mut value: Value) -> Value {
     value
 }
 
+/// Replaces what differs between each Interface's temp Wiki inside strings:
+/// its temp dir (raw and canonical) and its Wiki key (machine settings path).
+struct Scrub(Vec<(String, &'static str)>);
+
+impl Scrub {
+    fn of(dir: &tempfile::TempDir, wiki: &Wiki) -> Self {
+        let key = wiki.machine_file().file_stem().unwrap().to_string_lossy();
+        let canonical = wiki.root().parent().unwrap().display().to_string();
+        Self(vec![
+            (key.to_string(), "<key>"),
+            (canonical, "<tmp>"),
+            (dir.path().display().to_string(), "<tmp>"),
+        ])
+    }
+
+    fn apply(&self, value: Value) -> Value {
+        match value {
+            Value::String(mut text) => {
+                for (from, to) in &self.0 {
+                    text = text.replace(from, to);
+                }
+                Value::String(text)
+            }
+            Value::Array(items) => Value::Array(items.into_iter().map(|v| self.apply(v)).collect()),
+            Value::Object(map) => {
+                Value::Object(map.into_iter().map(|(k, v)| (k, self.apply(v))).collect())
+            }
+            other => other,
+        }
+    }
+}
+
 fn outcome(result: wikirs_core::Result<Value>) -> Value {
     result.unwrap_or_else(|e| e.to_json())
 }
 
 fn via_core(steps: &[Step]) -> Vec<Value> {
-    let (_dir, wiki) = temp_wiki();
+    let (dir, wiki) = temp_wiki();
+    let scrub = Scrub::of(&dir, &wiki);
     steps
         .iter()
         .map(|s| {
-            outcome(
+            scrub.apply(outcome(
                 wikirs_core::find(s.op)
                     .unwrap()
                     .call(&wiki, s.input.clone()),
-            )
+            ))
         })
         .collect()
 }
 
 fn via_cli(steps: &[Step]) -> Vec<Value> {
-    let (dir, _wiki) = temp_wiki();
+    let (dir, wiki) = temp_wiki();
+    let scrub = Scrub::of(&dir, &wiki);
     steps
         .iter()
         .map(|s| {
             let out = Command::new(env!("CARGO_BIN_EXE_wikirs"))
                 .env("WIKIRS_CACHE_DIR", dir.path().join("cache"))
+                // Where `open_isolated` puts machine settings for the same base.
+                .env("WIKIRS_CONFIG_DIR", dir.path().join("cache/config"))
                 .arg("--wiki")
                 .arg(dir.path().join("wiki"))
                 .arg("--json")
                 .args(s.cli)
                 .output()
                 .unwrap();
-            serde_json::from_slice(&out.stdout).unwrap_or_else(|e| {
+            scrub.apply(serde_json::from_slice(&out.stdout).unwrap_or_else(|e| {
                 panic!(
                     "{}: bad JSON ({e}): {}",
                     s.op,
                     String::from_utf8_lossy(&out.stdout)
                 )
-            })
+            }))
         })
         .collect()
 }
 
 async fn via_mcp(steps: &[Step]) -> Vec<Value> {
-    let (_dir, wiki) = temp_wiki();
+    let (dir, wiki) = temp_wiki();
+    let scrub = Scrub::of(&dir, &wiki);
     let client = mcp_client(wiki).await;
     let mut out = Vec::new();
     for s in steps {
@@ -443,9 +525,11 @@ async fn via_mcp(steps: &[Step]) -> Vec<Value> {
             .await
             .unwrap();
         out.push(
-            result
-                .structured_content
-                .expect("tool results carry structured content"),
+            scrub.apply(
+                result
+                    .structured_content
+                    .expect("tool results carry structured content"),
+            ),
         );
     }
     out
@@ -486,6 +570,11 @@ async fn every_interface_behaves_identically() {
             step.op
         );
     }
+    check_scenario(&steps, &core);
+}
+
+/// What the scenario's core results must show, beyond the Interfaces agreeing.
+fn check_scenario(steps: &[Step], core: &[Value]) {
     // The scenario really exercises the error kinds it claims to.
     let kinds: Vec<&str> = core
         .iter()
@@ -552,8 +641,36 @@ async fn every_interface_behaves_identically() {
             "invalid_path",
             "not_found",
             "invalid_input",
-            "invalid_input"
+            "invalid_input",
+            "already_exists",
+            "invalid_input",
+            "not_found"
         ]
+    );
+    let config = &core[at("get_config", None)]["result"]["settings"];
+    let sources: Vec<(&str, &str)> = config
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|s| s["source"] != "default")
+        .map(|s| (s["key"].as_str().unwrap(), s["source"].as_str().unwrap()))
+        .collect();
+    assert_eq!(
+        sources,
+        [
+            ("links.syntax", "wiki"),
+            ("ignore", "wiki"),
+            ("serve.port", "machine")
+        ]
+    );
+    let listed = &core[at("list_pages", None)]["result"]["pages"];
+    assert!(
+        listed
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|p| p["path"] != "eng/zeta"),
+        "ignored at once: {listed}"
     );
     // eng/zeta was placed before eng/rust (`order: 5`) in the gap below it.
     let eng = &core[at("children", None)]["result"]["children"];

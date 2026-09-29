@@ -20,6 +20,8 @@ rusqlite.workspace = true
 pulldown-cmark.workspace = true
 yaml-rust2.workspace = true
 percent-encoding.workspace = true
+toml_edit.workspace = true
+globset.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

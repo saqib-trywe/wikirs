@@ -3,6 +3,7 @@
 //! Adapters (CLI, MCP, HTTP, TUI, GUI) are generated from [`ops::registry`] and
 //! stay thin (ADR 0004).
 
+pub mod config;
 pub mod error;
 pub mod frontmatter;
 pub mod hierarchy;
@@ -14,11 +15,12 @@ pub mod ops;
 pub mod plan;
 mod registry;
 pub mod rewrite;
+pub mod settings;
 mod wiki;
 
 pub use error::{ChangedFile, Error, ErrorKind, Result};
 pub use registry::{Kind, OpInfo, Operation, catalogue, find, run_enveloped};
-pub use wiki::{PagePath, Wiki, resolve_root};
+pub use wiki::{Discovery, PagePath, Wiki, config_base, resolve_root};
 
 #[cfg(feature = "clap")]
 pub use ops::Command;

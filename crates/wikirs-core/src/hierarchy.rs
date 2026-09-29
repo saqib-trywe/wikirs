@@ -460,8 +460,7 @@ mod tests {
             std::fs::write(path, content).unwrap();
         }
         std::fs::create_dir_all(dir.path().join("wiki")).unwrap();
-        let wiki =
-            Wiki::open_with_cache(dir.path().join("wiki"), dir.path().join("cache")).unwrap();
+        let wiki = Wiki::open_isolated(dir.path().join("wiki"), dir.path().join("cache")).unwrap();
         (dir, wiki)
     }
 

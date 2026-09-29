@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     Error, Kind, Operation, Result, Wiki,
+    config::{GetConfig, Init, SetConfig},
     error::ChangedFile,
     hierarchy::{Children, ListSpaces, ReorderPage},
     index::{Filter, Hit, PageRow, Scope, Skipped, Sort, page_path},
@@ -18,6 +19,9 @@ use crate::{
 };
 
 crate::operations![
+    Init,
+    GetConfig,
+    SetConfig,
     GetPage,
     ListPages,
     Children,
@@ -636,7 +640,8 @@ impl Operation for RebuildIndex {
     type Output = IndexStatusOutput;
 
     fn run(wiki: &Wiki, _input: RebuildIndexInput) -> Result<IndexStatusOutput> {
-        wiki.index().rebuild(wiki.root())?;
+        let ignore = wiki.settings().ignore();
+        wiki.index().rebuild(wiki.root(), &ignore)?;
         status(wiki)
     }
 }
@@ -1058,8 +1063,7 @@ mod tests {
     fn wiki() -> (tempfile::TempDir, Wiki) {
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir(dir.path().join("wiki")).unwrap();
-        let wiki =
-            Wiki::open_with_cache(dir.path().join("wiki"), dir.path().join("cache")).unwrap();
+        let wiki = Wiki::open_isolated(dir.path().join("wiki"), dir.path().join("cache")).unwrap();
         (dir, wiki)
     }
 
@@ -1248,7 +1252,7 @@ mod tests {
     fn a_held_write_lock_times_out_as_conflict() {
         let (_d, wiki) = wiki();
         let _held = wiki.lock_writes().unwrap();
-        let other = Wiki::open_with_cache(wiki.root(), wiki.cache_dir().parent().unwrap()).unwrap();
+        let other = Wiki::open_isolated(wiki.root(), wiki.cache_dir().parent().unwrap()).unwrap();
         let started = std::time::Instant::now();
         let err = create(&other, "eng/rust", false).unwrap_err();
         assert_eq!(
@@ -1281,7 +1285,7 @@ mod tests {
         create(&wiki, "eng/rust", false).unwrap();
         let before = wiki.index().last_updated().unwrap();
         std::thread::sleep(std::time::Duration::from_millis(5));
-        let again = Wiki::open_with_cache(wiki.root(), dir.path().join("cache")).unwrap();
+        let again = Wiki::open_isolated(wiki.root(), dir.path().join("cache")).unwrap();
         assert_eq!(again.index().last_updated().unwrap(), before);
     }
 
@@ -1290,7 +1294,7 @@ mod tests {
     #[test]
     fn incremental_index_equals_a_rebuild() {
         let (dir, wiki) = wiki();
-        let reopen = || Wiki::open_with_cache(wiki.root(), dir.path().join("cache")).unwrap();
+        let reopen = || Wiki::open_isolated(wiki.root(), dir.path().join("cache")).unwrap();
         let root = wiki.root().to_path_buf();
         create(&wiki, "eng/rust", false).unwrap();
         create(&wiki, "eng/rust/async", false).unwrap();
@@ -1306,7 +1310,10 @@ mod tests {
         let incremental = reopen().index().dump().unwrap();
 
         let rebuilt = reopen();
-        rebuilt.index().rebuild(&root).unwrap();
+        rebuilt
+            .index()
+            .rebuild(&root, &crate::settings::Ignore::default())
+            .unwrap();
         assert_eq!(incremental, rebuilt.index().dump().unwrap());
         assert!(
             incremental.iter().any(|r| r.contains("Lifetimes")),
@@ -1370,7 +1377,7 @@ mod tests {
         let (dir, wiki) = wiki();
         std::fs::create_dir_all(wiki.root().join("eng")).unwrap();
         std::fs::write(wiki.root().join("eng/notes.md"), "# Notes\n").unwrap();
-        let reopen = || Wiki::open_with_cache(wiki.root(), dir.path().join("cache")).unwrap();
+        let reopen = || Wiki::open_isolated(wiki.root(), dir.path().join("cache")).unwrap();
         let status = |wiki: &Wiki, raw: &str| {
             let input = ResolveLinkInput {
                 from_page: "index".into(),

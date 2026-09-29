@@ -7,7 +7,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::{Error, Result, index::Index};
+use crate::{Error, Result, index::Index, settings::Settings};
 
 /// How long a mutation waits for another process's write lock (ADR 0006).
 const LOCK_TIMEOUT: Duration = Duration::from_secs(5);
@@ -16,6 +16,7 @@ const LOCK_TIMEOUT: Duration = Duration::from_secs(5);
 pub struct Wiki {
     root: PathBuf,
     cache_dir: PathBuf,
+    machine_file: PathBuf,
     index: Arc<Mutex<Index>>,
 }
 
@@ -23,28 +24,61 @@ impl Wiki {
     /// Opens the Wiki at `root`, finishing any Plan a crashed process left in
     /// its journal (process-model.md).
     pub fn open(root: impl AsRef<Path>) -> Result<Self> {
-        Self::open_with_cache(root, cache_base())
+        Self::open_in(root.as_ref(), &cache_base(), &config_base())
     }
 
-    /// Like [`Wiki::open`], with per-Wiki cache dirs under `cache_base` instead
-    /// of the OS cache dir (tests and embedders).
-    pub fn open_with_cache(root: impl AsRef<Path>, cache_base: impl AsRef<Path>) -> Result<Self> {
-        let given = root.as_ref();
+    /// Like [`Wiki::open`], with everything per machine under `base` instead of
+    /// the user's dirs: cache dirs in `base/<wiki key>/`, machine settings in
+    /// `base/config/` (tests and embedders).
+    pub fn open_isolated(root: impl AsRef<Path>, base: impl AsRef<Path>) -> Result<Self> {
+        let base = base.as_ref();
+        Self::open_in(root.as_ref(), base, &base.join("config"))
+    }
+
+    fn open_in(given: &Path, cache_base: &Path, config_base: &Path) -> Result<Self> {
         let root = given
             .canonicalize()
             .ok()
             .filter(|p| p.is_dir())
             .ok_or_else(|| Error::not_found("wiki", &given.display().to_string()))?;
-        let cache_dir = cache_base.as_ref().join(wiki_key(&root));
-        let mut index = Index::open(&cache_dir.join("index.db"))?;
+        let key = wiki_key(&root);
+        let machine_file = config_base.join("wikis").join(format!("{key}.toml"));
+        let settings = Settings::load(&root, &machine_file);
+        let cache_dir = settings
+            .cache_dir()
+            .unwrap_or_else(|| cache_base.join(&key));
+        let mut index = Index::open(&cache_dir.join("index.db"), settings.stemming())?;
         crate::plan::recover_at_open(&root, &cache_dir)?;
         // Every open brings the Index up to date (process-model.md#freshness).
-        index.reconcile(&root)?;
+        index.reconcile(&root, &settings.ignore())?;
         Ok(Self {
             root,
             cache_dir,
+            machine_file,
             index: Arc::new(Mutex::new(index)),
         })
+    }
+
+    /// Both settings files, as they are now.
+    #[must_use]
+    pub fn settings(&self) -> Settings {
+        Settings::load(&self.root, &self.machine_file)
+    }
+
+    /// This machine's settings file for the Wiki (outside it).
+    #[must_use]
+    pub fn machine_file(&self) -> &Path {
+        &self.machine_file
+    }
+
+    /// Applies changed Index settings (`ignore`, `search.stemming`) to this
+    /// handle: reopening the Index rebuilds it if the tokenizer changed, and a
+    /// reconcile drops newly ignored files and adds unignored ones.
+    pub fn reload_index_settings(&self) -> Result<()> {
+        let settings = self.settings();
+        let mut index = self.index();
+        *index = Index::open(&self.cache_dir.join("index.db"), settings.stemming())?;
+        index.reconcile(&self.root, &settings.ignore())
     }
 
     /// The shared Index connection for this handle.
@@ -125,30 +159,113 @@ fn wiki_key(root: &Path) -> String {
     blake3::hash(root.to_string_lossy().as_bytes()).to_hex()[..16].to_string()
 }
 
-/// Finds the root for CLI-style Interfaces: `--wiki`, then `WIKIRS_WIKI`, then
-/// walking up from `cwd` to the nearest folder containing `.wikirs/`.
-///
-/// Walking skeleton: named Wikis and `default_wiki` from the user config come later.
+/// `~/.config/wikirs` on every OS (or `$XDG_CONFIG_HOME/wikirs`), or
+/// `WIKIRS_CONFIG_DIR` (tests and CI), for the user config and machine settings.
+#[must_use]
+pub fn config_base() -> PathBuf {
+    if let Some(dir) = std::env::var_os("WIKIRS_CONFIG_DIR") {
+        return PathBuf::from(dir);
+    }
+    std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .filter(|p| p.is_absolute())
+        .or_else(|| dirs::home_dir().map(|h| h.join(".config")))
+        .unwrap_or_else(|| std::env::temp_dir().join("wikirs-config"))
+        .join("wikirs")
+}
+
+/// Which steps of the resolution order apply (wiki-selection.md).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Discovery {
+    /// CLI, TUI, `serve`: flag, env, walk up from the cwd, `default_wiki`.
+    Cli,
+    /// `mcp`: like `Cli` but never walks up (a client's cwd is unpredictable).
+    Mcp,
+    /// `init`: flag or env, else the cwd itself.
+    Init,
+}
+
+/// Finds the Wiki root: `--wiki`, then `WIKIRS_WIKI`, then (for `Cli`) the
+/// nearest folder above `cwd` containing `.wikirs/`, then `default_wiki` from
+/// the user config in `config_base`.
 pub fn resolve_root(
     flag: Option<&str>,
     env: Option<&str>,
     cwd: &Path,
-    walk_up: bool,
+    discovery: Discovery,
+    config_base: &Path,
 ) -> Result<PathBuf> {
+    let user = UserConfig::load(config_base);
     if let Some(given) = flag.or(env) {
-        return Ok(expand_home(given));
+        return Ok(user.wiki_value(given, cwd));
     }
-    if walk_up && let Some(found) = cwd.ancestors().find(|dir| dir.join(".wikirs").is_dir()) {
-        return Ok(found.to_path_buf());
+    match discovery {
+        Discovery::Init => return Ok(cwd.to_path_buf()),
+        Discovery::Cli => {
+            if let Some(found) = cwd.ancestors().find(|dir| dir.join(".wikirs").is_dir()) {
+                return Ok(found.to_path_buf());
+            }
+        }
+        Discovery::Mcp => {}
+    }
+    if let Some(default) = &user.default_wiki {
+        return Ok(user.wiki_value(default, cwd));
     }
     let mut err = Error::not_found("wiki", &cwd.display().to_string());
     err.message = "no Wiki found: run 'wikirs init' here, pass --wiki, or set default_wiki".into();
     Err(err)
 }
 
-fn expand_home(path: &str) -> PathBuf {
-    match (path.strip_prefix("~/"), std::env::var_os("HOME")) {
-        (Some(rest), Some(home)) => PathBuf::from(home).join(rest),
+/// `<config base>/config.toml`, written by the user: `default_wiki` and named
+/// Wikis (`[wikis] notes = "~/notes"`). Unreadable means empty.
+#[derive(Debug, Default)]
+struct UserConfig {
+    default_wiki: Option<String>,
+    wikis: Vec<(String, String)>,
+}
+
+impl UserConfig {
+    fn load(config_base: &Path) -> Self {
+        let Some(doc) = std::fs::read_to_string(config_base.join("config.toml"))
+            .ok()
+            .and_then(|t| t.parse::<toml_edit::DocumentMut>().ok())
+        else {
+            return Self::default();
+        };
+        Self {
+            default_wiki: doc
+                .get("default_wiki")
+                .and_then(|v| v.as_str())
+                .map(str::to_string),
+            wikis: doc
+                .get("wikis")
+                .and_then(toml_edit::Item::as_table_like)
+                .into_iter()
+                .flat_map(|t| t.iter())
+                .filter_map(|(name, v)| Some((name.to_string(), v.as_str()?.to_string())))
+                .collect(),
+        }
+    }
+
+    /// A `--wiki` value: a path if it contains `/` or starts with `~` or `.`;
+    /// otherwise a named Wiki, else a path relative to `cwd`.
+    fn wiki_value(&self, value: &str, cwd: &Path) -> PathBuf {
+        let is_path = value.contains('/') || value.starts_with(['~', '.']);
+        let named = (!is_path)
+            .then(|| self.wikis.iter().find(|(n, _)| n == value))
+            .flatten();
+        match named {
+            Some((_, path)) => cwd.join(expand_home(path)),
+            None => cwd.join(expand_home(value)),
+        }
+    }
+}
+
+pub(crate) fn expand_home(path: &str) -> PathBuf {
+    let home = dirs::home_dir();
+    match (path, path.strip_prefix("~/"), home) {
+        ("~", _, Some(home)) => home,
+        (_, Some(rest), Some(home)) => home.join(rest),
         _ => PathBuf::from(path),
     }
 }
@@ -249,6 +366,75 @@ mod tests {
     fn slugify_matches_the_spec_example() {
         assert_eq!(slugify("Async Notes, Part 2"), "async-notes-part-2");
         assert_eq!(slugify("  Größe & Ärger "), "größe-ärger");
+    }
+
+    #[test]
+    fn roots_resolve_in_the_documented_order() {
+        let dir = tempfile::tempdir().unwrap();
+        let (home, config) = (dir.path().join("w"), dir.path().join("config"));
+        let inner = home.join("a/b");
+        std::fs::create_dir_all(home.join(".wikirs")).unwrap();
+        std::fs::create_dir_all(&inner).unwrap();
+        std::fs::create_dir_all(&config).unwrap();
+        let resolve = |flag: Option<&str>, env: Option<&str>, discovery| {
+            resolve_root(flag, env, &inner, discovery, &config)
+        };
+
+        assert_eq!(
+            resolve(None, None, Discovery::Cli).unwrap(),
+            home,
+            "walk up"
+        );
+        let err = resolve(None, None, Discovery::Mcp).unwrap_err();
+        assert_eq!(err.kind, crate::ErrorKind::NotFound, "mcp never walks up");
+        assert_eq!(
+            resolve(None, None, Discovery::Init).unwrap(),
+            inner,
+            "init: the cwd"
+        );
+        assert_eq!(
+            resolve(Some("/x"), Some("/y"), Discovery::Init).unwrap(),
+            PathBuf::from("/x"),
+            "the flag beats the env var"
+        );
+        assert_eq!(
+            resolve(None, Some("/y"), Discovery::Cli).unwrap(),
+            PathBuf::from("/y")
+        );
+
+        std::fs::write(
+            config.join("config.toml"),
+            "default_wiki = \"notes\"\n[wikis]\nnotes = \"/n\"\n\".n\" = \"/dot\"\n",
+        )
+        .unwrap();
+        assert_eq!(
+            resolve(None, None, Discovery::Mcp).unwrap(),
+            PathBuf::from("/n")
+        );
+        assert_eq!(
+            resolve(None, None, Discovery::Cli).unwrap(),
+            home,
+            "walk-up comes first"
+        );
+        assert_eq!(
+            resolve(Some("notes"), None, Discovery::Cli).unwrap(),
+            PathBuf::from("/n")
+        );
+        assert_eq!(
+            resolve(Some("./notes"), None, Discovery::Cli).unwrap(),
+            inner.join("./notes"),
+            "a path-looking value is never a name"
+        );
+        assert_eq!(
+            resolve(Some(".n"), None, Discovery::Cli).unwrap(),
+            inner.join(".n"),
+            "nor is one starting with `.`"
+        );
+        assert_eq!(
+            resolve(Some("other"), None, Discovery::Cli).unwrap(),
+            inner.join("other"),
+            "an unknown name is a relative path"
+        );
     }
 
     #[test]

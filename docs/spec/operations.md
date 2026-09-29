@@ -58,6 +58,21 @@ Warnings are never errors. On JSON Interfaces every Output is wrapped as `{ resu
 
 Operations take no `wiki` argument: the Wiki is the process's (or GUI window's) context, see [wiki-selection.md](wiki-selection.md). `init` is the only Operation whose root isn't resolved the usual way: it targets `--wiki` / `WIKIRS_WIKI`, else the cwd, with no walk-up.
 
+The settings are a closed set; any other key is `NotFound`. `get_config` returns `[{ key, value, source, scope, description }]` (one entry when `key` is given), where `scope` is the file the key belongs in.
+
+| Key | Scope | Values (default) |
+|---|---|---|
+| `links.syntax` | wiki | `standard` \| `wikilink` (`standard`) |
+| `ignore` | wiki | globs (`[]`): a pattern without `/` matches a name at any depth, one with `/` is anchored at the root, `*` stops at `/` |
+| `search.stemming` | wiki | `none` \| `english` (`none`); changing it rebuilds the Index |
+| `watcher` | machine | `native` \| `poll` (`native`) |
+| `cache_dir` | machine | a path (the OS cache dir); used from the next open |
+| `serve.bind`, `serve.port`, `serve.require_token`, `serve.allowed_hosts`, `serve.cors_origins`, `serve.read_only`, `serve.max_body` | machine | see [http-security.md](http-security.md#settings) |
+
+- A `wiki` key can also be set with `scope: machine`, which overrides the Wiki's value on this machine. A `machine` key with `scope: wiki` is `InvalidInput`: it never goes in the committed file.
+- An unreadable file or an invalid value is ignored (the next source applies) with a `bad_setting` warning; `set_config` refuses to edit a file that isn't valid TOML.
+- Edits keep the file's comments and layout. A table left empty is removed.
+
 ## Pages
 
 | Operation | Kind | Inputs | Output | Errors |

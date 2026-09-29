@@ -16,7 +16,9 @@ use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use schemars::JsonSchema;
 use serde::Serialize;
 
-use crate::{Error, Result, links::normalize_dest, markdown::parse, plan::version_of};
+use crate::{
+    Error, Result, links::normalize_dest, markdown::parse, plan::version_of, settings::Ignore,
+};
 
 /// Bump when the tables change; a mismatch rebuilds the Index at open.
 const INDEX_SCHEMA: i64 = 3;
@@ -54,8 +56,8 @@ fn db_err(e: &rusqlite::Error) -> Error {
 
 impl Index {
     /// Opens (creating if needed) the Index at `path`, rebuilding it if its
-    /// schema or parser version differs from this binary's.
-    pub fn open(path: &Path) -> Result<Self> {
+    /// schema, parser version or tokenizer (`stemming`) differs.
+    pub fn open(path: &Path, stemming: bool) -> Result<Self> {
         let dir = path
             .parent()
             .ok_or_else(|| Error::internal("the Index path has no parent dir"))?;
@@ -68,11 +70,11 @@ impl Index {
         conn.pragma_update(None, "synchronous", "NORMAL")
             .map_err(|e| db_err(&e))?;
         let mut index = Self { conn };
-        index.ensure_schema()?;
+        index.ensure_schema(stemming)?;
         Ok(index)
     }
 
-    fn ensure_schema(&mut self) -> Result<()> {
+    fn ensure_schema(&mut self, stemming: bool) -> Result<()> {
         let tx = self
             .conn
             .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -86,9 +88,19 @@ impl Index {
                 .optional()
                 .map_err(|e| db_err(&e))
         };
-        let current = (get("index_schema")?, get("parser_version")?);
-        if current != (Some(INDEX_SCHEMA), Some(PARSER_VERSION)) {
-            tx.execute_batch(
+        let stemming = i64::from(stemming);
+        let current = (
+            get("index_schema")?,
+            get("parser_version")?,
+            get("stemming")?,
+        );
+        if current != (Some(INDEX_SCHEMA), Some(PARSER_VERSION), Some(stemming)) {
+            let tokenizer = if stemming == 1 {
+                "porter unicode61 remove_diacritics 2"
+            } else {
+                "unicode61 remove_diacritics 2"
+            };
+            tx.execute_batch(&format!(
                 "DROP TABLE IF EXISTS files;
                  DROP TABLE IF EXISTS pages_fts;
                  DROP TABLE IF EXISTS skipped;
@@ -107,7 +119,7 @@ impl Index {
                  -- Page text is stored once, here: no separate body column elsewhere.
                  CREATE VIRTUAL TABLE pages_fts USING fts5(
                      path UNINDEXED, title, body,
-                     tokenize = 'unicode61 remove_diacritics 2'
+                     tokenize = '{tokenizer}'
                  );
                  CREATE TABLE skipped (path TEXT PRIMARY KEY, reason TEXT NOT NULL);
                  -- `dest`: the target as a path from the Wiki root, NULL if it climbs out.
@@ -129,12 +141,13 @@ impl Index {
                      page TEXT NOT NULL, level INTEGER NOT NULL, text TEXT NOT NULL,
                      anchor TEXT NOT NULL, start INTEGER NOT NULL, end INTEGER NOT NULL
                  );
-                 CREATE INDEX headings_page ON headings (page);",
-            )
+                 CREATE INDEX headings_page ON headings (page);"
+            ))
             .map_err(|e| db_err(&e))?;
             for (key, value) in [
                 ("index_schema", INDEX_SCHEMA),
                 ("parser_version", PARSER_VERSION),
+                ("stemming", stemming),
                 ("generation", 0),
             ] {
                 tx.execute(
@@ -151,8 +164,8 @@ impl Index {
     /// Brings the Index up to date with the files under `root`: a stat scan,
     /// hashing only files whose size or mtime changed, reparsing only files
     /// whose hash changed. Writes nothing when nothing changed.
-    pub fn reconcile(&mut self, root: &Path) -> Result<()> {
-        let (scanned, skipped) = scan(root);
+    pub fn reconcile(&mut self, root: &Path, ignore: &Ignore) -> Result<()> {
+        let (scanned, skipped) = scan(root, ignore);
         let known: HashMap<String, (i64, i64, String, String)> = {
             let mut stmt = self
                 .conn
@@ -245,12 +258,16 @@ impl Index {
     }
 
     /// Re-indexes specific files (relative paths) after a mutation wrote them.
-    pub fn refresh(&mut self, root: &Path, paths: &[&str]) -> Result<()> {
+    /// Paths a scan wouldn't index (hidden, ignored, outside the Wiki) are skipped.
+    pub fn refresh(&mut self, root: &Path, paths: &[&str], ignore: &Ignore) -> Result<()> {
         let tx = self
             .conn
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|e| db_err(&e))?;
         for path in paths {
+            if !indexable(path, ignore) {
+                continue;
+            }
             let full = root.join(path);
             match (fs::symlink_metadata(&full), fs::read(&full)) {
                 (Ok(meta), Ok(bytes)) if meta.is_file() => {
@@ -270,7 +287,7 @@ impl Index {
 
     /// Drops everything and re-indexes `root`, in one transaction: other
     /// processes keep reading the old contents until it commits.
-    pub fn rebuild(&mut self, root: &Path) -> Result<()> {
+    pub fn rebuild(&mut self, root: &Path, ignore: &Ignore) -> Result<()> {
         {
             let tx = self
                 .conn
@@ -288,7 +305,7 @@ impl Index {
             .map_err(|e| db_err(&e))?;
             tx.commit().map_err(|e| db_err(&e))?;
         }
-        self.reconcile(root)
+        self.reconcile(root, ignore)
     }
 
     /// A canonical dump of everything derived from the files, for comparing
@@ -858,7 +875,26 @@ fn mtime_of(meta: &fs::Metadata) -> i64 {
 
 /// Walks the Wiki (not following symlinks, skipping hidden entries) and
 /// returns every file by relative path, plus what was skipped and why.
-fn scan(root: &Path) -> (HashMap<String, Scanned>, Vec<Skipped>) {
+/// Whether a scan would index the file at `rel`: inside the Wiki, with no
+/// hidden segment, and not (under) an ignored path.
+fn indexable(rel: &str, ignore: &Ignore) -> bool {
+    let mut prefix = String::new();
+    for segment in rel.split('/') {
+        if segment.is_empty() || segment.starts_with('.') {
+            return false;
+        }
+        if !prefix.is_empty() {
+            prefix.push('/');
+        }
+        prefix.push_str(segment);
+        if ignore.matches(&prefix) {
+            return false;
+        }
+    }
+    !Path::new(rel).is_absolute()
+}
+
+fn scan(root: &Path, ignore: &Ignore) -> (HashMap<String, Scanned>, Vec<Skipped>) {
     let mut files = HashMap::new();
     let mut skipped = Vec::new();
     let mut dirs = vec![(root.to_path_buf(), String::new())];
@@ -882,6 +918,9 @@ fn scan(root: &Path) -> (HashMap<String, Scanned>, Vec<Skipped>) {
                 continue; // hidden: .git, .wikirs, temp files…
             }
             let rel = format!("{prefix}{name}");
+            if ignore.matches(&rel) {
+                continue;
+            }
             let Ok(meta) = fs::symlink_metadata(entry.path()) else {
                 continue;
             };

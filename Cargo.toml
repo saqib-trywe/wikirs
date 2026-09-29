@@ -27,6 +27,8 @@ rusqlite = { version = "0.40", features = ["bundled"] }
 pulldown-cmark = { version = "0.13", default-features = false }
 yaml-rust2 = "0.13"
 percent-encoding = "2.3"
+toml_edit = "0.25"
+globset = "0.4"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

@@ -754,8 +754,7 @@ mod tests {
     fn wiki() -> (tempfile::TempDir, Wiki) {
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir(dir.path().join("wiki")).unwrap();
-        let wiki =
-            Wiki::open_with_cache(dir.path().join("wiki"), dir.path().join("cache")).unwrap();
+        let wiki = Wiki::open_isolated(dir.path().join("wiki"), dir.path().join("cache")).unwrap();
         (dir, wiki)
     }
 
@@ -767,7 +766,7 @@ mod tests {
 
     /// Re-opens so the Index sees files written behind its back.
     fn reopen(dir: &tempfile::TempDir) -> Wiki {
-        Wiki::open_with_cache(dir.path().join("wiki"), dir.path().join("cache")).unwrap()
+        Wiki::open_isolated(dir.path().join("wiki"), dir.path().join("cache")).unwrap()
     }
 
     fn call(wiki: &Wiki, op: &str, input: serde_json::Value) -> Result<serde_json::Value> {
