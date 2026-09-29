@@ -726,8 +726,11 @@ mod tests {
         );
 
         std::fs::rename(root.join("fresh.md"), root.join("renamed.md")).unwrap();
+        // The backend may split a move over two batches (inotify does): one
+        // `index_updated` each.
         let mut events = short(&next_batch(&rx, Duration::from_secs(2)));
         events.sort();
+        events.dedup();
         assert_eq!(
             events,
             [
@@ -739,8 +742,11 @@ mod tests {
         );
 
         std::fs::rename(root.join("eng"), root.join("dept")).unwrap();
+        // The backend may split a move over two batches (inotify does): one
+        // `index_updated` each.
         let mut events = short(&next_batch(&rx, Duration::from_secs(2)));
         events.sort();
+        events.dedup();
         assert_eq!(
             events,
             [
