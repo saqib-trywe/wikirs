@@ -8,10 +8,11 @@ use serde::{Deserialize, Serialize};
 use crate::{
     Error, Kind, Operation, Result, Wiki,
     error::ChangedFile,
+    hierarchy::{Children, ListSpaces, ReorderPage},
     index::{Filter, Hit, PageRow, Scope, Skipped, Sort, page_path},
     links::{LinkStatus, Resolved, normalize_dest, resolve},
     markdown,
-    mutations::{DeletePage, MovePage, RenameTag, TagPage, UntagPage},
+    mutations::{DeletePage, MovePage, RenameTag, SetPageMeta, TagPage, UntagPage},
     plan::{Edit, Plan, Splice, UnrecoveredEdit, Warning, mutate, unrecovered_edits, version_of},
     wiki::{PagePath, check_case_conflict, slugify},
 };
@@ -19,6 +20,8 @@ use crate::{
 crate::operations![
     GetPage,
     ListPages,
+    Children,
+    ListSpaces,
     Links,
     Backlinks,
     ResolveLink,
@@ -28,8 +31,10 @@ crate::operations![
     CreatePage,
     WritePage,
     EditPage,
+    SetPageMeta,
     MovePage,
     DeletePage,
+    ReorderPage,
     TagPage,
     UntagPage,
     RenameTag,

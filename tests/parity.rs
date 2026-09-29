@@ -316,6 +316,53 @@ fn scenario() -> Vec<Step> {
             input: json!({ "page": "nope", "recursive": true }),
             cli: &["delete-page", "nope", "--recursive"],
         },
+        Step {
+            op: "set_page_meta",
+            input: json!({ "page": "eng/rust", "meta": { "order": 5, "status": "draft" } }),
+            cli: &[
+                "set-page-meta",
+                "eng/rust",
+                "--set",
+                "status=draft",
+                "--set",
+                "order=5",
+            ],
+        },
+        Step {
+            op: "set_page_meta",
+            input: json!({ "page": "eng/rust", "meta": { "tags": ["x"] } }),
+            cli: &["set-page-meta", "eng/rust", "--set", r#"tags=["x"]"#],
+        },
+        Step {
+            op: "create_page",
+            input: json!({ "path": "eng/zeta" }),
+            cli: &["create-page", "--path", "eng/zeta"],
+        },
+        Step {
+            op: "reorder_page",
+            input: json!({ "page": "eng/zeta", "before": "eng/rust" }),
+            cli: &["reorder-page", "eng/zeta", "--before", "eng/rust"],
+        },
+        Step {
+            op: "reorder_page",
+            input: json!({ "page": "eng/zeta", "after": "notes" }),
+            cli: &["reorder-page", "eng/zeta", "--after", "notes"],
+        },
+        Step {
+            op: "children",
+            input: json!({}),
+            cli: &["children"],
+        },
+        Step {
+            op: "children",
+            input: json!({ "parent": "eng", "depth": 2 }),
+            cli: &["children", "eng", "--depth", "2"],
+        },
+        Step {
+            op: "list_spaces",
+            input: json!({}),
+            cli: &["list-spaces"],
+        },
     ]
 }
 
@@ -503,9 +550,14 @@ async fn every_interface_behaves_identically() {
             "invalid_input",
             "invalid_input",
             "invalid_path",
-            "not_found"
+            "not_found",
+            "invalid_input",
+            "invalid_input"
         ]
     );
+    // eng/zeta was placed before eng/rust (`order: 5`) in the gap below it.
+    let eng = &core[at("children", None)]["result"]["children"];
+    assert_eq!(eng[0]["path"], "eng/zeta", "{eng}");
 }
 
 // ---------------------------------------------------------- contract snapshot

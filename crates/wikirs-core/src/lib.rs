@@ -5,6 +5,7 @@
 
 pub mod error;
 pub mod frontmatter;
+pub mod hierarchy;
 pub mod index;
 pub mod links;
 pub mod markdown;

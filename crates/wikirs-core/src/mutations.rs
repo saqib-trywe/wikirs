@@ -506,7 +506,10 @@ impl Operation for UntagPage {
 }
 
 /// Reads an existing Page inside a mutation.
-fn read_existing(tx: &mut Tx, page: &PagePath) -> Result<(String, crate::plan::ReadFile)> {
+pub(crate) fn read_existing(
+    tx: &mut Tx,
+    page: &PagePath,
+) -> Result<(String, crate::plan::ReadFile)> {
     let wiki = tx.wiki().clone();
     if check_case_conflict(&wiki, page).is_err() {
         return Err(Error::not_found("page", page.as_str()));
@@ -518,7 +521,12 @@ fn read_existing(tx: &mut Tx, page: &PagePath) -> Result<(String, crate::plan::R
     Ok((file, content))
 }
 
-fn push_modify(tx: &mut Tx, path: String, base_version: String, mut splices: Vec<Splice>) {
+pub(crate) fn push_modify(
+    tx: &mut Tx,
+    path: String,
+    base_version: String,
+    mut splices: Vec<Splice>,
+) {
     if splices.is_empty() {
         return;
     }
@@ -528,6 +536,105 @@ fn push_modify(tx: &mut Tx, path: String, base_version: String, mut splices: Vec
         base_version,
         splices,
     });
+}
+
+// ------------------------------------------------------------- set_page_meta
+
+pub struct SetPageMeta;
+
+/// Set or remove frontmatter keys of a Page. `tags` has its own Operations.
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "clap", derive(clap::Args))]
+pub struct SetPageMetaInput {
+    /// Page Path.
+    pub page: String,
+    /// Keys to set, e.g. `{"title": "Async", "order": 10}`; `null` removes a key.
+    #[serde(deserialize_with = "meta_map")]
+    #[schemars(with = "BTreeMap<String, serde_json::Value>")]
+    #[cfg_attr(
+        feature = "clap",
+        arg(long = "set", value_name = "KEY=VALUE", value_parser = parse_meta, required = true)
+    )]
+    pub meta: Vec<(String, serde_json::Value)>,
+    /// Return the Plan without applying it.
+    #[serde(default)]
+    #[cfg_attr(feature = "clap", arg(long))]
+    pub dry_run: bool,
+}
+
+fn meta_map<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> std::result::Result<Vec<(String, serde_json::Value)>, D::Error> {
+    Ok(BTreeMap::<String, serde_json::Value>::deserialize(d)?
+        .into_iter()
+        .collect())
+}
+
+/// `key=value`: the value is JSON if it parses as JSON, else a string; `key=null` removes.
+#[cfg(feature = "clap")]
+fn parse_meta(raw: &str) -> std::result::Result<(String, serde_json::Value), String> {
+    let (key, value) = raw.split_once('=').ok_or("expected KEY=VALUE")?;
+    let value = serde_json::from_str(value).unwrap_or_else(|_| value.into());
+    Ok((key.to_string(), value))
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct SetPageMetaOutput {
+    pub path: String,
+    pub plan: Plan,
+    pub applied: bool,
+}
+
+/// Checks the keys and puts them in one order whatever the Interface.
+fn meta_changes(
+    meta: Vec<(String, serde_json::Value)>,
+) -> Result<Vec<(String, Option<serde_json::Value>)>> {
+    let bad = |reason: String| Error::invalid_input(Some("meta"), reason);
+    if meta.is_empty() {
+        return Err(bad("give at least one key".into()));
+    }
+    let mut changes = BTreeMap::new();
+    for (key, value) in meta {
+        if key.trim().is_empty() {
+            return Err(bad("a key is empty".into()));
+        }
+        if key == "tags" {
+            return Err(bad("`tags` is changed with tag_page / untag_page".into()));
+        }
+        if key == "order" && !(value.is_number() || value.is_null()) {
+            return Err(bad("`order` is a number".into()));
+        }
+        let value = (!value.is_null()).then_some(value);
+        if changes.insert(key.clone(), value).is_some() {
+            return Err(bad(format!("`{key}` is given twice")));
+        }
+    }
+    Ok(changes.into_iter().collect())
+}
+
+impl Operation for SetPageMeta {
+    const NAME: &'static str = "set_page_meta";
+    const KIND: Kind = Kind::Mutation;
+    const DESCRIPTION: &'static str = "Set or remove a Page's frontmatter keys (`null` removes). Setting `title` never renames the file; `tags` has its own Operations.";
+    type Input = SetPageMetaInput;
+    type Output = SetPageMetaOutput;
+
+    fn run(wiki: &Wiki, input: SetPageMetaInput) -> Result<SetPageMetaOutput> {
+        let page = PagePath::parse(&input.page)?;
+        let changes = meta_changes(input.meta)?;
+        let (plan, ()) = mutate(wiki, input.dry_run, |tx| {
+            let (file, content) = read_existing(tx, &page)?;
+            let splices = frontmatter::set_keys(&content.content, &changes);
+            push_modify(tx, file, content.version, splices);
+            Ok(())
+        })?;
+        Ok(SetPageMetaOutput {
+            path: page.as_str().to_string(),
+            plan,
+            applied: !input.dry_run,
+        })
+    }
 }
 
 // ---------------------------------------------------------------- rename_tag
@@ -943,5 +1050,74 @@ mod tests {
             "{}",
             page("eng/rust.md")
         );
+    }
+
+    #[test]
+    fn set_page_meta_splices_keys_and_refuses_tags() {
+        let (dir, wiki) = wiki();
+        write(&wiki, "p.md", "# P\n\nbody\n");
+        let wiki = reopen(&dir);
+        let read = || std::fs::read_to_string(wiki.root().join("p.md")).unwrap();
+
+        let dry = call(
+            &wiki,
+            "set_page_meta",
+            serde_json::json!({ "page": "p", "meta": { "title": "Pé", "order": 3 }, "dry_run": true }),
+        )
+        .unwrap();
+        assert_eq!(read(), "# P\n\nbody\n", "a dry run writes nothing");
+        let applied = call(
+            &wiki,
+            "set_page_meta",
+            serde_json::json!({ "page": "p", "meta": { "title": "Pé", "order": 3 } }),
+        )
+        .unwrap();
+        assert_eq!(dry["result"]["plan"], applied["result"]["plan"]);
+        assert_eq!(read(), "---\norder: 3\ntitle: Pé\n---\n# P\n\nbody\n");
+        let got = call(&wiki, "get_page", serde_json::json!({ "page": "p" })).unwrap();
+        assert_eq!(
+            got["result"]["title"], "Pé",
+            "the Title changes, the path doesn't"
+        );
+
+        call(
+            &wiki,
+            "set_page_meta",
+            serde_json::json!({ "page": "p", "meta": { "title": null, "order": null } }),
+        )
+        .unwrap();
+        assert_eq!(
+            read(),
+            "# P\n\nbody\n",
+            "removing every key removes the block"
+        );
+
+        for (meta, kind) in [
+            (
+                serde_json::json!({ "tags": ["x"] }),
+                ErrorKind::InvalidInput,
+            ),
+            (
+                serde_json::json!({ "order": "first" }),
+                ErrorKind::InvalidInput,
+            ),
+            (serde_json::json!({ "": 1 }), ErrorKind::InvalidInput),
+            (serde_json::json!({}), ErrorKind::InvalidInput),
+        ] {
+            let err = call(
+                &wiki,
+                "set_page_meta",
+                serde_json::json!({ "page": "p", "meta": meta }),
+            )
+            .unwrap_err();
+            assert_eq!(err.kind, kind);
+        }
+        let err = call(
+            &wiki,
+            "set_page_meta",
+            serde_json::json!({ "page": "nope", "meta": { "a": 1 } }),
+        )
+        .unwrap_err();
+        assert_eq!(err.kind, ErrorKind::NotFound);
     }
 }

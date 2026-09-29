@@ -273,7 +273,7 @@ fn parse_frontmatter(yaml: &str) -> Option<Value> {
     }
 }
 
-fn yaml_to_json(y: &Yaml) -> Value {
+pub(crate) fn yaml_to_json(y: &Yaml) -> Value {
     match y {
         Yaml::Real(s) => s.parse::<f64>().map_or(Value::Null, Value::from),
         Yaml::Integer(i) => Value::from(*i),

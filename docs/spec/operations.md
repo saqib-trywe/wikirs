@@ -88,6 +88,10 @@ Operations take no `wiki` argument: the Wiki is the process's (or GUI window's) 
 
 There is no `create_space`: a Space exists once a Page exists at or under its path. Reparenting is `move_page`.
 
+- A folder holding only Attachments is neither a Placeholder nor a Space: both need a Page beneath them.
+- A Placeholder can't carry `order:`, so it always sorts after its ordered siblings; a `reorder_page` whose result depends on one says so with a `placeholder_unordered` warning.
+- `set_page_meta` rejects a non-number `order` (`InvalidInput`).
+
 ## Links
 
 | Operation | Kind | Inputs | Output | Errors |

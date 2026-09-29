@@ -19,7 +19,7 @@ use serde::Serialize;
 use crate::{Error, Result, links::normalize_dest, markdown::parse, plan::version_of};
 
 /// Bump when the tables change; a mismatch rebuilds the Index at open.
-const INDEX_SCHEMA: i64 = 2;
+const INDEX_SCHEMA: i64 = 3;
 /// Bump when what's extracted from a file changes (Title rules, parser version).
 const PARSER_VERSION: i64 = 2;
 
@@ -101,7 +101,8 @@ impl Index {
                      size  INTEGER NOT NULL,
                      mtime INTEGER NOT NULL,   -- nanoseconds since the epoch
                      hash  TEXT NOT NULL,
-                     title TEXT
+                     title TEXT,
+                     ord   REAL                -- frontmatter `order:`, Pages only
                  );
                  -- Page text is stored once, here: no separate body column elsewhere.
                  CREATE VIRTUAL TABLE pages_fts USING fts5(
@@ -296,7 +297,7 @@ impl Index {
     pub fn dump(&self) -> Result<Vec<String>> {
         let mut rows = Vec::new();
         for sql in [
-            "SELECT 'file', path, kind, hash, coalesce(title, '') FROM files ORDER BY path",
+            "SELECT 'file', path, kind, hash, coalesce(title, '') || '|' || coalesce(ord, '') FROM files ORDER BY path",
             "SELECT 'fts', path, title, body, '' FROM pages_fts ORDER BY path",
             "SELECT 'skipped', path, reason, '', '' FROM skipped ORDER BY path",
             "SELECT 'link', src, start || '-' || end, coalesce(dest, '-'), raw FROM links ORDER BY src, start",
@@ -494,6 +495,29 @@ impl Index {
         Ok((rows, total))
     }
 
+    /// Every Page file at `dir.md` or under `dir/` (the whole Wiki for ""),
+    /// with its Title and `order:`, matched case-sensitively.
+    pub(crate) fn pages_under(&self, dir: &str) -> Result<Vec<HierarchyRow>> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT path, title, ord FROM files
+                 WHERE kind = 'page' AND (?1 = '' OR path = ?1 || '.md' OR substr(path, 1, length(?1) + 1) = ?1 || '/')
+                 ORDER BY path",
+            )
+            .map_err(|e| db_err(&e))?;
+        stmt.query_map([dir], |r| {
+            Ok(HierarchyRow {
+                file: r.get(0)?,
+                title: r.get(1)?,
+                order: r.get(2)?,
+            })
+        })
+        .map_err(|e| db_err(&e))?
+        .collect::<rusqlite::Result<_>>()
+        .map_err(|e| db_err(&e))
+    }
+
     /// Full-text search. `query` is already an FTS5 expression built by the
     /// caller from plain terms and phrases.
     pub fn search(
@@ -567,6 +591,14 @@ pub struct Hit {
     pub snippet: String,
     /// Relevance; higher is better.
     pub score: f64,
+}
+
+/// A Page as the hierarchy sees it.
+#[derive(Debug, Clone)]
+pub(crate) struct HierarchyRow {
+    pub file: String,
+    pub title: String,
+    pub order: Option<f64>,
 }
 
 /// A Tag written in mixed case: `(page file, as written, byte range)`.
@@ -703,10 +735,15 @@ fn upsert(
                 .to_string()
         })
     });
+    let order = parsed
+        .as_ref()
+        .and_then(|p| p.frontmatter.as_ref()?.get("order")?.as_f64());
     tx.execute(
-        "INSERT INTO files (path, kind, size, mtime, hash, title) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-         ON CONFLICT(path) DO UPDATE SET kind = ?2, size = ?3, mtime = ?4, hash = ?5, title = ?6",
-        params![path, file.kind, file.size, file.mtime, hash, title],
+        "INSERT INTO files (path, kind, size, mtime, hash, title, ord)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+         ON CONFLICT(path) DO UPDATE
+         SET kind = ?2, size = ?3, mtime = ?4, hash = ?5, title = ?6, ord = ?7",
+        params![path, file.kind, file.size, file.mtime, hash, title, order],
     )
     .map_err(|e| db_err(&e))?;
     remove_derived(tx, path)?;

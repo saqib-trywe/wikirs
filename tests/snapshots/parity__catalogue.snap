@@ -199,6 +199,147 @@ expression: "wikirs_core::catalogue()"
       }
     },
     {
+      "description": "List the Child Pages and Placeholders under a Page (or the Wiki root), in display order.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "description": "List the Child Pages and Placeholders under a Page, in display order.",
+        "properties": {
+          "depth": {
+            "default": 1,
+            "description": "Levels to list: 1 is direct children only.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "parent": {
+            "description": "Page Path or Placeholder; the Wiki root if absent.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "title": "ChildrenInput",
+        "type": "object"
+      },
+      "kind": "query",
+      "name": "children",
+      "output_schema": {
+        "$defs": {
+          "ChildNode": {
+            "properties": {
+              "children": {
+                "description": "Its own children, while `depth` lasts.",
+                "items": {
+                  "$ref": "#/$defs/ChildNode"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "has_children": {
+                "type": "boolean"
+              },
+              "kind": {
+                "$ref": "#/$defs/NodeKind"
+              },
+              "path": {
+                "type": "string"
+              },
+              "title": {
+                "description": "The Page's Title, or a Placeholder's folder name.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "title",
+              "kind",
+              "has_children"
+            ],
+            "type": "object"
+          },
+          "NodeKind": {
+            "enum": [
+              "page",
+              "placeholder"
+            ],
+            "type": "string"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "children": {
+            "items": {
+              "$ref": "#/$defs/ChildNode"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "children"
+        ],
+        "title": "ChildrenOutput",
+        "type": "object"
+      }
+    },
+    {
+      "description": "List the Spaces (top-level folders holding Pages) with their home Pages and Page counts.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "title": "ListSpacesInput",
+        "type": "object"
+      },
+      "kind": "query",
+      "name": "list_spaces",
+      "output_schema": {
+        "$defs": {
+          "Space": {
+            "properties": {
+              "home_page": {
+                "description": "`<name>`, if the Space has a home Page.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "page_count": {
+                "description": "Pages in the Space, its home Page included.",
+                "format": "uint",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "name",
+              "page_count"
+            ],
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "spaces": {
+            "items": {
+              "$ref": "#/$defs/Space"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "spaces"
+        ],
+        "title": "ListSpacesOutput",
+        "type": "object"
+      }
+    },
+    {
       "description": "The Links a Page makes, each resolved: ok, broken, heading_missing or case_fallback.",
       "input_schema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1405,6 +1546,218 @@ expression: "wikirs_core::catalogue()"
       }
     },
     {
+      "description": "Set or remove a Page's frontmatter keys (`null` removes). Setting `title` never renames the file; `tags` has its own Operations.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "description": "Set or remove frontmatter keys of a Page. `tags` has its own Operations.",
+        "properties": {
+          "dry_run": {
+            "default": false,
+            "description": "Return the Plan without applying it.",
+            "type": "boolean"
+          },
+          "meta": {
+            "additionalProperties": true,
+            "description": "Keys to set, e.g. `{\"title\": \"Async\", \"order\": 10}`; `null` removes a key.",
+            "type": "object"
+          },
+          "page": {
+            "description": "Page Path.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "page",
+          "meta"
+        ],
+        "title": "SetPageMetaInput",
+        "type": "object"
+      },
+      "kind": "mutation",
+      "name": "set_page_meta",
+      "output_schema": {
+        "$defs": {
+          "Edit": {
+            "description": "One file edit. Paths are relative to the Wiki root.",
+            "oneOf": [
+              {
+                "description": "Create a new file.",
+                "properties": {
+                  "content": {
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "create",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "content"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Splice an existing file. Every byte outside the splices is unchanged.",
+                "properties": {
+                  "base_version": {
+                    "description": "Hash of the file this edit was planned against.",
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "modify",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "splices": {
+                    "description": "Non-overlapping byte ranges of the original file, in order.",
+                    "items": {
+                      "$ref": "#/$defs/Splice"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "base_version",
+                  "splices"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Move a file, unchanged, to a path that doesn't exist yet.",
+                "properties": {
+                  "from": {
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "move",
+                    "type": "string"
+                  },
+                  "to": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "from",
+                  "to"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Delete a file.",
+                "properties": {
+                  "op": {
+                    "const": "delete",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "Plan": {
+            "properties": {
+              "edits": {
+                "items": {
+                  "$ref": "#/$defs/Edit"
+                },
+                "type": "array"
+              },
+              "warnings": {
+                "items": {
+                  "$ref": "#/$defs/Warning"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "edits",
+              "warnings"
+            ],
+            "type": "object"
+          },
+          "Splice": {
+            "properties": {
+              "new": {
+                "type": "string"
+              },
+              "old": {
+                "type": "string"
+              },
+              "range": {
+                "description": "Byte range `[start, end)` in the original file.",
+                "items": {
+                  "format": "uint",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              }
+            },
+            "required": [
+              "range",
+              "old",
+              "new"
+            ],
+            "type": "object"
+          },
+          "Warning": {
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "message"
+            ],
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "applied": {
+            "type": "boolean"
+          },
+          "path": {
+            "type": "string"
+          },
+          "plan": {
+            "$ref": "#/$defs/Plan"
+          }
+        },
+        "required": [
+          "path",
+          "plan",
+          "applied"
+        ],
+        "title": "SetPageMetaOutput",
+        "type": "object"
+      }
+    },
+    {
       "description": "Move or rename a Page with its Child Pages and Attachments, rewriting every Link to them.",
       "input_schema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1845,6 +2198,235 @@ expression: "wikirs_core::catalogue()"
           "deleted"
         ],
         "title": "DeletePageOutput",
+        "type": "object"
+      }
+    },
+    {
+      "description": "Place a Page before or after a sibling by writing its `order:` (siblings are renumbered only when no gap is left).",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "description": "Move a Page before or after one of its siblings, by writing its `order:`.",
+        "properties": {
+          "after": {
+            "description": "Place it just after this sibling.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "before": {
+            "description": "Place it just before this sibling.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dry_run": {
+            "default": false,
+            "description": "Return the Plan without applying it.",
+            "type": "boolean"
+          },
+          "page": {
+            "description": "Page Path.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "page"
+        ],
+        "title": "ReorderPageInput",
+        "type": "object"
+      },
+      "kind": "mutation",
+      "name": "reorder_page",
+      "output_schema": {
+        "$defs": {
+          "Edit": {
+            "description": "One file edit. Paths are relative to the Wiki root.",
+            "oneOf": [
+              {
+                "description": "Create a new file.",
+                "properties": {
+                  "content": {
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "create",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "content"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Splice an existing file. Every byte outside the splices is unchanged.",
+                "properties": {
+                  "base_version": {
+                    "description": "Hash of the file this edit was planned against.",
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "modify",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "splices": {
+                    "description": "Non-overlapping byte ranges of the original file, in order.",
+                    "items": {
+                      "$ref": "#/$defs/Splice"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "base_version",
+                  "splices"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Move a file, unchanged, to a path that doesn't exist yet.",
+                "properties": {
+                  "from": {
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "move",
+                    "type": "string"
+                  },
+                  "to": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "from",
+                  "to"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Delete a file.",
+                "properties": {
+                  "op": {
+                    "const": "delete",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "Plan": {
+            "properties": {
+              "edits": {
+                "items": {
+                  "$ref": "#/$defs/Edit"
+                },
+                "type": "array"
+              },
+              "warnings": {
+                "items": {
+                  "$ref": "#/$defs/Warning"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "edits",
+              "warnings"
+            ],
+            "type": "object"
+          },
+          "Splice": {
+            "properties": {
+              "new": {
+                "type": "string"
+              },
+              "old": {
+                "type": "string"
+              },
+              "range": {
+                "description": "Byte range `[start, end)` in the original file.",
+                "items": {
+                  "format": "uint",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              }
+            },
+            "required": [
+              "range",
+              "old",
+              "new"
+            ],
+            "type": "object"
+          },
+          "Warning": {
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "message"
+            ],
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "applied": {
+            "type": "boolean"
+          },
+          "path": {
+            "type": "string"
+          },
+          "plan": {
+            "$ref": "#/$defs/Plan"
+          },
+          "written": {
+            "additionalProperties": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "description": "Pages whose `order:` is written: the Page, plus any renumbered siblings.",
+            "type": "object"
+          }
+        },
+        "required": [
+          "path",
+          "plan",
+          "applied",
+          "written"
+        ],
+        "title": "ReorderPageOutput",
         "type": "object"
       }
     },
