@@ -4,12 +4,15 @@
 //! stay thin (ADR 0004).
 
 pub mod error;
+pub mod frontmatter;
 pub mod index;
 pub mod links;
 pub mod markdown;
+pub mod mutations;
 pub mod ops;
 pub mod plan;
 mod registry;
+pub mod rewrite;
 mod wiki;
 
 pub use error::{ChangedFile, Error, ErrorKind, Result};

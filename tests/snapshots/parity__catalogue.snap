@@ -807,6 +807,44 @@ expression: "wikirs_core::catalogue()"
                   "splices"
                 ],
                 "type": "object"
+              },
+              {
+                "description": "Move a file, unchanged, to a path that doesn't exist yet.",
+                "properties": {
+                  "from": {
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "move",
+                    "type": "string"
+                  },
+                  "to": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "from",
+                  "to"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Delete a file.",
+                "properties": {
+                  "op": {
+                    "const": "delete",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path"
+                ],
+                "type": "object"
               }
             ]
           },
@@ -986,6 +1024,44 @@ expression: "wikirs_core::catalogue()"
                   "path",
                   "base_version",
                   "splices"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Move a file, unchanged, to a path that doesn't exist yet.",
+                "properties": {
+                  "from": {
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "move",
+                    "type": "string"
+                  },
+                  "to": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "from",
+                  "to"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Delete a file.",
+                "properties": {
+                  "op": {
+                    "const": "delete",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path"
                 ],
                 "type": "object"
               }
@@ -1196,6 +1272,44 @@ expression: "wikirs_core::catalogue()"
                   "splices"
                 ],
                 "type": "object"
+              },
+              {
+                "description": "Move a file, unchanged, to a path that doesn't exist yet.",
+                "properties": {
+                  "from": {
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "move",
+                    "type": "string"
+                  },
+                  "to": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "from",
+                  "to"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Delete a file.",
+                "properties": {
+                  "op": {
+                    "const": "delete",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path"
+                ],
+                "type": "object"
               }
             ]
           },
@@ -1287,6 +1401,1109 @@ expression: "wikirs_core::catalogue()"
           "version"
         ],
         "title": "WriteOutput",
+        "type": "object"
+      }
+    },
+    {
+      "description": "Move or rename a Page with its Child Pages and Attachments, rewriting every Link to them.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "description": "Move (or rename) a Page, carrying its Child Pages and Attachments, and\nrewrite every Link to anything moved.",
+        "properties": {
+          "dry_run": {
+            "default": false,
+            "description": "Return the Plan without applying it.",
+            "type": "boolean"
+          },
+          "from": {
+            "description": "Page Path to move (a Placeholder is fine).",
+            "type": "string"
+          },
+          "to": {
+            "description": "New Page Path.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ],
+        "title": "MovePageInput",
+        "type": "object"
+      },
+      "kind": "mutation",
+      "name": "move_page",
+      "output_schema": {
+        "$defs": {
+          "Edit": {
+            "description": "One file edit. Paths are relative to the Wiki root.",
+            "oneOf": [
+              {
+                "description": "Create a new file.",
+                "properties": {
+                  "content": {
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "create",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "content"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Splice an existing file. Every byte outside the splices is unchanged.",
+                "properties": {
+                  "base_version": {
+                    "description": "Hash of the file this edit was planned against.",
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "modify",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "splices": {
+                    "description": "Non-overlapping byte ranges of the original file, in order.",
+                    "items": {
+                      "$ref": "#/$defs/Splice"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "base_version",
+                  "splices"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Move a file, unchanged, to a path that doesn't exist yet.",
+                "properties": {
+                  "from": {
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "move",
+                    "type": "string"
+                  },
+                  "to": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "from",
+                  "to"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Delete a file.",
+                "properties": {
+                  "op": {
+                    "const": "delete",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "Plan": {
+            "properties": {
+              "edits": {
+                "items": {
+                  "$ref": "#/$defs/Edit"
+                },
+                "type": "array"
+              },
+              "warnings": {
+                "items": {
+                  "$ref": "#/$defs/Warning"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "edits",
+              "warnings"
+            ],
+            "type": "object"
+          },
+          "Splice": {
+            "properties": {
+              "new": {
+                "type": "string"
+              },
+              "old": {
+                "type": "string"
+              },
+              "range": {
+                "description": "Byte range `[start, end)` in the original file.",
+                "items": {
+                  "format": "uint",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              }
+            },
+            "required": [
+              "range",
+              "old",
+              "new"
+            ],
+            "type": "object"
+          },
+          "Warning": {
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "message"
+            ],
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "applied": {
+            "type": "boolean"
+          },
+          "from": {
+            "type": "string"
+          },
+          "links_rewritten": {
+            "description": "Links rewritten across the Wiki.",
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "moved": {
+            "description": "Files moved (Pages and Attachments).",
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "plan": {
+            "$ref": "#/$defs/Plan"
+          },
+          "to": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "plan",
+          "applied",
+          "moved",
+          "links_rewritten"
+        ],
+        "title": "MovePageOutput",
+        "type": "object"
+      }
+    },
+    {
+      "description": "Delete a Page (with `recursive`, its whole subtree). The Plan warns about Links that will break.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "description": "Delete a Page. Its Child Pages stay behind under a Placeholder unless `recursive`.",
+        "properties": {
+          "dry_run": {
+            "default": false,
+            "description": "Return the Plan without applying it.",
+            "type": "boolean"
+          },
+          "page": {
+            "description": "Page Path.",
+            "type": "string"
+          },
+          "recursive": {
+            "default": false,
+            "description": "Also delete every Child Page and Attachment under it.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "page"
+        ],
+        "title": "DeletePageInput",
+        "type": "object"
+      },
+      "kind": "mutation",
+      "name": "delete_page",
+      "output_schema": {
+        "$defs": {
+          "Edit": {
+            "description": "One file edit. Paths are relative to the Wiki root.",
+            "oneOf": [
+              {
+                "description": "Create a new file.",
+                "properties": {
+                  "content": {
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "create",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "content"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Splice an existing file. Every byte outside the splices is unchanged.",
+                "properties": {
+                  "base_version": {
+                    "description": "Hash of the file this edit was planned against.",
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "modify",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "splices": {
+                    "description": "Non-overlapping byte ranges of the original file, in order.",
+                    "items": {
+                      "$ref": "#/$defs/Splice"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "base_version",
+                  "splices"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Move a file, unchanged, to a path that doesn't exist yet.",
+                "properties": {
+                  "from": {
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "move",
+                    "type": "string"
+                  },
+                  "to": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "from",
+                  "to"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Delete a file.",
+                "properties": {
+                  "op": {
+                    "const": "delete",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "Plan": {
+            "properties": {
+              "edits": {
+                "items": {
+                  "$ref": "#/$defs/Edit"
+                },
+                "type": "array"
+              },
+              "warnings": {
+                "items": {
+                  "$ref": "#/$defs/Warning"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "edits",
+              "warnings"
+            ],
+            "type": "object"
+          },
+          "Splice": {
+            "properties": {
+              "new": {
+                "type": "string"
+              },
+              "old": {
+                "type": "string"
+              },
+              "range": {
+                "description": "Byte range `[start, end)` in the original file.",
+                "items": {
+                  "format": "uint",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              }
+            },
+            "required": [
+              "range",
+              "old",
+              "new"
+            ],
+            "type": "object"
+          },
+          "Warning": {
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "message"
+            ],
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "applied": {
+            "type": "boolean"
+          },
+          "deleted": {
+            "description": "Files deleted.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "plan": {
+            "$ref": "#/$defs/Plan"
+          }
+        },
+        "required": [
+          "plan",
+          "applied",
+          "deleted"
+        ],
+        "title": "DeletePageOutput",
+        "type": "object"
+      }
+    },
+    {
+      "description": "Add Tags to a Page's frontmatter (Tags it already carries are skipped).",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "description": "Tags to add to, or remove from, one Page.",
+        "properties": {
+          "dry_run": {
+            "default": false,
+            "description": "Return the Plan without applying it.",
+            "type": "boolean"
+          },
+          "page": {
+            "description": "Page Path.",
+            "type": "string"
+          },
+          "tags": {
+            "description": "Tags, e.g. `lang/rust`.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "page",
+          "tags"
+        ],
+        "title": "PageTagsInput",
+        "type": "object"
+      },
+      "kind": "mutation",
+      "name": "tag_page",
+      "output_schema": {
+        "$defs": {
+          "Edit": {
+            "description": "One file edit. Paths are relative to the Wiki root.",
+            "oneOf": [
+              {
+                "description": "Create a new file.",
+                "properties": {
+                  "content": {
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "create",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "content"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Splice an existing file. Every byte outside the splices is unchanged.",
+                "properties": {
+                  "base_version": {
+                    "description": "Hash of the file this edit was planned against.",
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "modify",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "splices": {
+                    "description": "Non-overlapping byte ranges of the original file, in order.",
+                    "items": {
+                      "$ref": "#/$defs/Splice"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "base_version",
+                  "splices"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Move a file, unchanged, to a path that doesn't exist yet.",
+                "properties": {
+                  "from": {
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "move",
+                    "type": "string"
+                  },
+                  "to": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "from",
+                  "to"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Delete a file.",
+                "properties": {
+                  "op": {
+                    "const": "delete",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "Plan": {
+            "properties": {
+              "edits": {
+                "items": {
+                  "$ref": "#/$defs/Edit"
+                },
+                "type": "array"
+              },
+              "warnings": {
+                "items": {
+                  "$ref": "#/$defs/Warning"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "edits",
+              "warnings"
+            ],
+            "type": "object"
+          },
+          "Splice": {
+            "properties": {
+              "new": {
+                "type": "string"
+              },
+              "old": {
+                "type": "string"
+              },
+              "range": {
+                "description": "Byte range `[start, end)` in the original file.",
+                "items": {
+                  "format": "uint",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              }
+            },
+            "required": [
+              "range",
+              "old",
+              "new"
+            ],
+            "type": "object"
+          },
+          "Warning": {
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "message"
+            ],
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "applied": {
+            "type": "boolean"
+          },
+          "path": {
+            "type": "string"
+          },
+          "plan": {
+            "$ref": "#/$defs/Plan"
+          },
+          "tags": {
+            "description": "Tags actually added (or removed); ones already in that state are skipped.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "path",
+          "plan",
+          "applied",
+          "tags"
+        ],
+        "title": "PageTagsOutput",
+        "type": "object"
+      }
+    },
+    {
+      "description": "Remove Tags from a Page: frontmatter entries go, inline `#tag`s lose their `#` (the word stays).",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "description": "Tags to add to, or remove from, one Page.",
+        "properties": {
+          "dry_run": {
+            "default": false,
+            "description": "Return the Plan without applying it.",
+            "type": "boolean"
+          },
+          "page": {
+            "description": "Page Path.",
+            "type": "string"
+          },
+          "tags": {
+            "description": "Tags, e.g. `lang/rust`.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "page",
+          "tags"
+        ],
+        "title": "PageTagsInput",
+        "type": "object"
+      },
+      "kind": "mutation",
+      "name": "untag_page",
+      "output_schema": {
+        "$defs": {
+          "Edit": {
+            "description": "One file edit. Paths are relative to the Wiki root.",
+            "oneOf": [
+              {
+                "description": "Create a new file.",
+                "properties": {
+                  "content": {
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "create",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "content"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Splice an existing file. Every byte outside the splices is unchanged.",
+                "properties": {
+                  "base_version": {
+                    "description": "Hash of the file this edit was planned against.",
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "modify",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "splices": {
+                    "description": "Non-overlapping byte ranges of the original file, in order.",
+                    "items": {
+                      "$ref": "#/$defs/Splice"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "base_version",
+                  "splices"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Move a file, unchanged, to a path that doesn't exist yet.",
+                "properties": {
+                  "from": {
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "move",
+                    "type": "string"
+                  },
+                  "to": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "from",
+                  "to"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Delete a file.",
+                "properties": {
+                  "op": {
+                    "const": "delete",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "Plan": {
+            "properties": {
+              "edits": {
+                "items": {
+                  "$ref": "#/$defs/Edit"
+                },
+                "type": "array"
+              },
+              "warnings": {
+                "items": {
+                  "$ref": "#/$defs/Warning"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "edits",
+              "warnings"
+            ],
+            "type": "object"
+          },
+          "Splice": {
+            "properties": {
+              "new": {
+                "type": "string"
+              },
+              "old": {
+                "type": "string"
+              },
+              "range": {
+                "description": "Byte range `[start, end)` in the original file.",
+                "items": {
+                  "format": "uint",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              }
+            },
+            "required": [
+              "range",
+              "old",
+              "new"
+            ],
+            "type": "object"
+          },
+          "Warning": {
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "message"
+            ],
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "applied": {
+            "type": "boolean"
+          },
+          "path": {
+            "type": "string"
+          },
+          "plan": {
+            "$ref": "#/$defs/Plan"
+          },
+          "tags": {
+            "description": "Tags actually added (or removed); ones already in that state are skipped.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "path",
+          "plan",
+          "applied",
+          "tags"
+        ],
+        "title": "PageTagsOutput",
+        "type": "object"
+      }
+    },
+    {
+      "description": "Rename a Tag and its subtree across the Wiki (frontmatter and inline); onto an existing Tag, this merges.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "description": "Rename a Tag and its whole subtree; renaming onto an existing Tag merges them.",
+        "properties": {
+          "dry_run": {
+            "default": false,
+            "description": "Return the Plan without applying it.",
+            "type": "boolean"
+          },
+          "from": {
+            "description": "The Tag to rename, e.g. `lang/rust`.",
+            "type": "string"
+          },
+          "to": {
+            "description": "Its new name, e.g. `rust`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ],
+        "title": "RenameTagInput",
+        "type": "object"
+      },
+      "kind": "mutation",
+      "name": "rename_tag",
+      "output_schema": {
+        "$defs": {
+          "Edit": {
+            "description": "One file edit. Paths are relative to the Wiki root.",
+            "oneOf": [
+              {
+                "description": "Create a new file.",
+                "properties": {
+                  "content": {
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "create",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "content"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Splice an existing file. Every byte outside the splices is unchanged.",
+                "properties": {
+                  "base_version": {
+                    "description": "Hash of the file this edit was planned against.",
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "modify",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "splices": {
+                    "description": "Non-overlapping byte ranges of the original file, in order.",
+                    "items": {
+                      "$ref": "#/$defs/Splice"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "base_version",
+                  "splices"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Move a file, unchanged, to a path that doesn't exist yet.",
+                "properties": {
+                  "from": {
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "move",
+                    "type": "string"
+                  },
+                  "to": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "from",
+                  "to"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Delete a file.",
+                "properties": {
+                  "op": {
+                    "const": "delete",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "Plan": {
+            "properties": {
+              "edits": {
+                "items": {
+                  "$ref": "#/$defs/Edit"
+                },
+                "type": "array"
+              },
+              "warnings": {
+                "items": {
+                  "$ref": "#/$defs/Warning"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "edits",
+              "warnings"
+            ],
+            "type": "object"
+          },
+          "Splice": {
+            "properties": {
+              "new": {
+                "type": "string"
+              },
+              "old": {
+                "type": "string"
+              },
+              "range": {
+                "description": "Byte range `[start, end)` in the original file.",
+                "items": {
+                  "format": "uint",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              }
+            },
+            "required": [
+              "range",
+              "old",
+              "new"
+            ],
+            "type": "object"
+          },
+          "Warning": {
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "message"
+            ],
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "applied": {
+            "type": "boolean"
+          },
+          "pages": {
+            "description": "Pages rewritten.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "plan": {
+            "$ref": "#/$defs/Plan"
+          }
+        },
+        "required": [
+          "plan",
+          "applied",
+          "pages"
+        ],
+        "title": "RenameTagOutput",
         "type": "object"
       }
     },
@@ -1481,6 +2698,44 @@ expression: "wikirs_core::catalogue()"
                   "path",
                   "base_version",
                   "splices"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Move a file, unchanged, to a path that doesn't exist yet.",
+                "properties": {
+                  "from": {
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "move",
+                    "type": "string"
+                  },
+                  "to": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "from",
+                  "to"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Delete a file.",
+                "properties": {
+                  "op": {
+                    "const": "delete",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path"
                 ],
                 "type": "object"
               }
@@ -1683,6 +2938,44 @@ expression: "wikirs_core::catalogue()"
                   "path",
                   "base_version",
                   "splices"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Move a file, unchanged, to a path that doesn't exist yet.",
+                "properties": {
+                  "from": {
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "move",
+                    "type": "string"
+                  },
+                  "to": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "from",
+                  "to"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Delete a file.",
+                "properties": {
+                  "op": {
+                    "const": "delete",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path"
                 ],
                 "type": "object"
               }

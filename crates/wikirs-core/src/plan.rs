@@ -6,7 +6,7 @@
 //! apply it (creates/modifies before moves before deletes), drop the journal.
 
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fs,
     io::Write,
     path::{Path, PathBuf},
@@ -37,12 +37,30 @@ pub enum Edit {
         /// Non-overlapping byte ranges of the original file, in order.
         splices: Vec<Splice>,
     },
+    /// Move a file, unchanged, to a path that doesn't exist yet.
+    Move { from: String, to: String },
+    /// Delete a file.
+    Delete { path: String },
 }
 
 impl Edit {
-    fn path(&self) -> &str {
+    /// Apply order within a Plan: creates and modifies, then moves, then
+    /// deletes, so a crash never loses content.
+    fn rank(&self) -> u8 {
         match self {
-            Edit::Create { path, .. } | Edit::Modify { path, .. } => path,
+            Edit::Create { .. } | Edit::Modify { .. } => 0,
+            Edit::Move { .. } => 1,
+            Edit::Delete { .. } => 2,
+        }
+    }
+
+    /// Every path this edit touches.
+    fn paths(&self) -> Vec<&str> {
+        match self {
+            Edit::Create { path, .. } | Edit::Modify { path, .. } | Edit::Delete { path } => {
+                vec![path]
+            }
+            Edit::Move { from, to } => vec![from, to],
         }
     }
 }
@@ -102,6 +120,19 @@ impl Tx<'_> {
         Ok(file)
     }
 
+    /// Records a file's current hash without decoding it (moves and deletes
+    /// carry Attachments too); `false` if it doesn't exist.
+    pub fn stat(&mut self, rel: &str) -> Result<bool> {
+        let version = match fs::read(self.wiki.root().join(rel)) {
+            Ok(bytes) => Some(version_of(&bytes)),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+            Err(e) => return Err(Error::io(Some(rel), &e)),
+        };
+        let exists = version.is_some();
+        self.reads.insert(rel.to_string(), version);
+        Ok(exists)
+    }
+
     pub fn edit(&mut self, edit: Edit) {
         self.edits.push(edit);
     }
@@ -111,6 +142,11 @@ impl Tx<'_> {
             kind: kind.to_string(),
             message: message.into(),
         });
+    }
+
+    #[must_use]
+    pub fn wiki(&self) -> &Wiki {
+        self.wiki
     }
 }
 
@@ -133,10 +169,11 @@ pub fn mutate<T>(
     let value = plan(&mut tx)?;
     let Tx {
         reads,
-        edits,
+        mut edits,
         warnings,
         ..
     } = tx;
+    edits.sort_by_key(Edit::rank);
     let plan = Plan { edits, warnings };
     if dry_run || plan.edits.is_empty() {
         return Ok((plan, value));
@@ -146,7 +183,7 @@ pub fn mutate<T>(
     let changed: Vec<ChangedFile> = reads
         .into_iter()
         .filter_map(|(path, expected)| {
-            let actual = current_version(wiki, &path);
+            let actual = version_at(wiki.root(), &path);
             (actual != expected).then_some(ChangedFile {
                 path,
                 expected,
@@ -158,24 +195,26 @@ pub fn mutate<T>(
         return Err(Error::conflict_changed(&changed));
     }
 
-    let journal = Journal::new(wiki, &plan)?;
+    let journal = Journal::new(wiki.root(), &plan)?;
     journal.write(wiki)?;
     for (applied, entry) in journal.entries.iter().enumerate() {
         crash_hook(applied);
         entry
-            .edit
             .apply(wiki.root())
-            .map_err(|e| Error::io(Some(entry.edit.path()), &e))?;
+            .map_err(|e| Error::io(Some(entry.edit.paths()[0]), &e))?;
     }
+    remove_empty_dirs(wiki.root(), &journal);
     Journal::remove(wiki.cache_dir())?;
     // The Index is a cache: if this fails, the next reconcile repairs it.
-    let touched: Vec<&str> = journal.entries.iter().map(|e| e.edit.path()).collect();
-    let _ = wiki.index().refresh(wiki.root(), &touched);
+    let touched: BTreeSet<&str> = journal
+        .entries
+        .iter()
+        .flat_map(|e| e.edit.paths())
+        .collect();
+    let _ = wiki
+        .index()
+        .refresh(wiki.root(), &touched.into_iter().collect::<Vec<_>>());
     Ok((plan, value))
-}
-
-fn current_version(wiki: &Wiki, rel: &str) -> Option<String> {
-    version_at(wiki.root(), rel)
 }
 
 fn version_at(root: &Path, rel: &str) -> Option<String> {
@@ -196,30 +235,6 @@ fn crash_hook(applied: usize) {
 #[cfg(not(feature = "test-hooks"))]
 fn crash_hook(_applied: usize) {}
 
-impl Edit {
-    /// The file content after this edit, given the content before it.
-    fn result(&self, before: Option<&str>) -> std::io::Result<String> {
-        match (self, before) {
-            (Edit::Create { content, .. }, None) => Ok(content.clone()),
-            (Edit::Modify { splices, .. }, Some(original)) => Ok(splice(original, splices)),
-            _ => Err(std::io::Error::other(
-                "file is not in the state this edit expects",
-            )),
-        }
-    }
-
-    fn apply(&self, root: &Path) -> std::io::Result<()> {
-        let target = root.join(self.path());
-        let before = match fs::read_to_string(&target) {
-            Ok(s) => Some(s),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-            Err(e) => return Err(e),
-        };
-        let after = self.result(before.as_deref())?;
-        atomic_write(&target, after.as_bytes())
-    }
-}
-
 /// Applies non-overlapping, ordered splices to `original`.
 #[must_use]
 pub fn splice(original: &str, splices: &[Splice]) -> String {
@@ -236,11 +251,13 @@ pub fn splice(original: &str, splices: &[Splice]) -> String {
 
 /// Temp file in the same folder, fsync, rename over the target (process-model.md).
 fn atomic_write(target: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    let dir = target.parent().expect("target is inside the Wiki");
+    let dir = target
+        .parent()
+        .ok_or_else(|| std::io::Error::other("target has no parent dir"))?;
     fs::create_dir_all(dir)?;
     let name = target
         .file_name()
-        .expect("target has a file name")
+        .ok_or_else(|| std::io::Error::other("target has no file name"))?
         .to_string_lossy();
     let tmp = dir.join(format!(".{name}.wikirs-tmp"));
     let mut file = fs::File::create(&tmp)?;
@@ -250,9 +267,32 @@ fn atomic_write(target: &Path, bytes: &[u8]) -> std::io::Result<()> {
     fs::rename(&tmp, target)
 }
 
+/// Removes folders that moves and deletes left empty, walking up to (not
+/// including) the Wiki root. A deleted Page's folder with children stays: it's
+/// a Placeholder.
+fn remove_empty_dirs(root: &Path, journal: &Journal) {
+    let mut dirs: BTreeSet<PathBuf> = BTreeSet::new();
+    for entry in &journal.entries {
+        if let Edit::Move { from: path, .. } | Edit::Delete { path } = &entry.edit {
+            let mut dir = Path::new(path).parent();
+            while let Some(d) = dir.filter(|d| !d.as_os_str().is_empty()) {
+                dirs.insert(d.to_path_buf());
+                dir = d.parent();
+            }
+        }
+    }
+    // Deepest first, so a parent is only tried once its children are gone.
+    let mut dirs: Vec<_> = dirs.into_iter().collect();
+    dirs.sort_by_key(|d| std::cmp::Reverse(d.components().count()));
+    for dir in dirs {
+        let _ = fs::remove_dir(root.join(dir)); // fails harmlessly unless empty
+    }
+}
+
 // ---------------------------------------------------------------- journal
 
-/// A Plan being applied, with each file's hash before and after its edit.
+/// A Plan being applied: each edit with the state its file(s) must be in
+/// before and after it, so recovery can tell done from pending from diverged.
 #[derive(Debug, Serialize, Deserialize)]
 struct Journal {
     entries: Vec<JournalEntry>,
@@ -261,8 +301,62 @@ struct Journal {
 #[derive(Debug, Serialize, Deserialize)]
 struct JournalEntry {
     edit: Edit,
+    /// Hash of the file before the edit (at `from` for moves); None = absent.
     before: Option<String>,
-    after: String,
+    /// Hash of the file after the edit (at `to` for moves); None = absent.
+    after: Option<String>,
+}
+
+enum State {
+    Done,
+    Pending,
+    Diverged,
+}
+
+impl JournalEntry {
+    fn state(&self, root: &Path) -> State {
+        let (before_here, after_here) = match &self.edit {
+            Edit::Create { path, .. } | Edit::Modify { path, .. } | Edit::Delete { path } => {
+                let now = version_at(root, path);
+                (now == self.before, now == self.after)
+            }
+            Edit::Move { from, to } => {
+                let (at_from, at_to) = (version_at(root, from), version_at(root, to));
+                (
+                    at_from == self.before && at_to.is_none(),
+                    at_from.is_none() && at_to == self.after,
+                )
+            }
+        };
+        if after_here {
+            State::Done
+        } else if before_here {
+            State::Pending
+        } else {
+            State::Diverged
+        }
+    }
+
+    fn apply(&self, root: &Path) -> std::io::Result<()> {
+        match &self.edit {
+            Edit::Create { path, content } => atomic_write(&root.join(path), content.as_bytes()),
+            Edit::Modify { path, splices, .. } => {
+                let original = fs::read_to_string(root.join(path))?;
+                atomic_write(&root.join(path), splice(&original, splices).as_bytes())
+            }
+            Edit::Move { from, to } => {
+                let target = root.join(to);
+                if target.exists() {
+                    return Err(std::io::Error::other(format!("`{to}` already exists")));
+                }
+                if let Some(dir) = target.parent() {
+                    fs::create_dir_all(dir)?;
+                }
+                fs::rename(root.join(from), target)
+            }
+            Edit::Delete { path } => fs::remove_file(root.join(path)),
+        }
+    }
 }
 
 /// An edit from a crashed Plan that recovery left alone because its file had
@@ -274,24 +368,55 @@ pub struct UnrecoveredEdit {
 }
 
 impl Journal {
-    fn new(wiki: &Wiki, plan: &Plan) -> Result<Self> {
-        // Creates and modifies come before moves and deletes (none exist yet),
-        // so a crash never loses content.
-        let entries = plan
-            .edits
-            .iter()
-            .map(|edit| {
-                let before = fs::read_to_string(wiki.root().join(edit.path())).ok();
-                let after = edit
-                    .result(before.as_deref())
-                    .map_err(|e| Error::io(Some(edit.path()), &e))?;
-                Ok(JournalEntry {
-                    edit: edit.clone(),
-                    before: before.map(|b| version_of(b.as_bytes())),
-                    after: version_of(after.as_bytes()),
-                })
-            })
-            .collect::<Result<_>>()?;
+    /// Walks the Plan over a virtual copy of the files it touches, recording
+    /// each edit's before/after hashes.
+    fn new(root: &Path, plan: &Plan) -> Result<Self> {
+        let mut files: BTreeMap<String, Option<Vec<u8>>> = BTreeMap::new();
+        let state =
+            |path: &str, files: &mut BTreeMap<String, Option<Vec<u8>>>| -> Option<Vec<u8>> {
+                files
+                    .entry(path.to_string())
+                    .or_insert_with(|| fs::read(root.join(path)).ok())
+                    .clone()
+            };
+        let hash = |b: &Option<Vec<u8>>| b.as_deref().map(version_of);
+        let mut entries = Vec::with_capacity(plan.edits.len());
+        for edit in &plan.edits {
+            let (before, after) = match edit {
+                Edit::Create { path, content } => {
+                    let before = state(path, &mut files);
+                    let after = Some(content.as_bytes().to_vec());
+                    files.insert(path.clone(), after.clone());
+                    (hash(&before), hash(&after))
+                }
+                Edit::Modify { path, splices, .. } => {
+                    let before = state(path, &mut files);
+                    let text = before
+                        .as_deref()
+                        .and_then(|b| std::str::from_utf8(b).ok())
+                        .ok_or_else(|| Error::internal(format!("cannot modify `{path}`")))?;
+                    let after = Some(splice(text, splices).into_bytes());
+                    files.insert(path.clone(), after.clone());
+                    (hash(&before), hash(&after))
+                }
+                Edit::Move { from, to } => {
+                    let moving = state(from, &mut files);
+                    files.insert(from.clone(), None);
+                    files.insert(to.clone(), moving.clone());
+                    (hash(&moving), hash(&moving))
+                }
+                Edit::Delete { path } => {
+                    let before = state(path, &mut files);
+                    files.insert(path.clone(), None);
+                    (hash(&before), None)
+                }
+            };
+            entries.push(JournalEntry {
+                edit: edit.clone(),
+                before,
+                after,
+            });
+        }
         Ok(Self { entries })
     }
 
@@ -324,22 +449,18 @@ fn recover(root: &Path, cache_dir: &Path) -> Result<()> {
         .map_err(|e| Error::internal(format!("unreadable journal: {e}")))?;
     let mut unrecovered = Vec::new();
     for entry in &journal.entries {
-        let current = version_at(root, entry.edit.path());
-        if current.as_deref() == Some(entry.after.as_str()) {
-            continue; // already applied
-        }
-        if current == entry.before {
-            entry
-                .edit
+        match entry.state(root) {
+            State::Done => {}
+            State::Pending => entry
                 .apply(root)
-                .map_err(|e| Error::io(Some(entry.edit.path()), &e))?;
-        } else {
-            unrecovered.push(UnrecoveredEdit {
-                path: entry.edit.path().to_string(),
+                .map_err(|e| Error::io(Some(entry.edit.paths()[0]), &e))?,
+            State::Diverged => unrecovered.push(UnrecoveredEdit {
+                path: entry.edit.paths()[0].to_string(),
                 edit: entry.edit.clone(),
-            });
+            }),
         }
     }
+    remove_empty_dirs(root, &journal);
     if !unrecovered.is_empty() {
         let mut all = read_unrecovered(cache_dir);
         all.extend(unrecovered);
@@ -374,4 +495,45 @@ fn read_unrecovered(cache_dir: &Path) -> Vec<UnrecoveredEdit> {
 #[must_use]
 pub fn unrecovered_edits(wiki: &Wiki) -> Vec<UnrecoveredEdit> {
     read_unrecovered(wiki.cache_dir())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Recovery must tell a finished move from a pending one, and treat
+    /// anything else (e.g. the file copied to both places) as diverged.
+    #[test]
+    fn move_recovery_states() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let entry = JournalEntry {
+            edit: Edit::Move {
+                from: "a.md".into(),
+                to: "b.md".into(),
+            },
+            before: Some(version_of(b"x")),
+            after: Some(version_of(b"x")),
+        };
+        let state = |a: Option<&str>, b: Option<&str>| {
+            for (name, content) in [("a.md", a), ("b.md", b)] {
+                match content {
+                    Some(c) => fs::write(root.join(name), c).unwrap(),
+                    None => {
+                        let _ = fs::remove_file(root.join(name));
+                    }
+                }
+            }
+            match entry.state(root) {
+                State::Done => "done",
+                State::Pending => "pending",
+                State::Diverged => "diverged",
+            }
+        };
+        assert_eq!(state(Some("x"), None), "pending");
+        assert_eq!(state(None, Some("x")), "done");
+        assert_eq!(state(Some("x"), Some("x")), "diverged", "copied, not moved");
+        assert_eq!(state(Some("y"), None), "diverged", "edited since");
+        assert_eq!(state(None, None), "diverged", "gone");
+    }
 }

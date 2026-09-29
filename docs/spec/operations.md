@@ -75,6 +75,7 @@ Operations take no `wiki` argument: the Wiki is the process's (or GUI window's) 
 - `edit_page`: each `old` must match exactly once; all replacements apply or none do.
 - `set_page_meta` splices into frontmatter, creating the block if absent; `null` removes a key. Setting `title` never renames the file.
 - `move_page` is also rename. It carries the Page's folder (Child Pages, Attachments) and rewrites every Link to anything moved, plus the moved Pages' own relative Links. Moving onto a Placeholder is allowed and merges the folders; a clashing child path fails the whole Plan. Moving into its own subtree is `InvalidPath`. A Placeholder can be moved (a folder move). Renaming a Space is `move_page` on the Space's path.
+- `move_page` rewrites Links by splicing only their path, keeping syntax, alias, `#heading` and text; a case-fallback Link is corrected to the exact new path. **Reference-style Links** (`[text][ref]` with `[ref]: path.md` elsewhere) can't be rewritten in place: the Plan carries a `link_not_rewritten` warning, and `check` reports the Link as broken afterwards.
 - `delete_page` removes only the `.md`, leaving a Placeholder; `recursive` removes the subtree. Deleting a Placeholder requires `recursive`. A folder left empty is removed.
 
 ## Hierarchy and Spaces
@@ -109,6 +110,8 @@ There is no `create_space`: a Space exists once a Page exists at or under its pa
 | `rename_tag` | mutation | `from, to` | Plan (moves the subtree; renaming onto an existing Tag merges) | `NotFound`, `InvalidInput` |
 
 `untag_page` matches the exact Tag only, not descendants. Pages by Tag is `list_pages{filter: {tag}}`.
+
+Removing a Page's last frontmatter Tag removes the `tags:` key; if nothing else is left in the frontmatter, the whole `---` block goes too.
 
 ## Search
 

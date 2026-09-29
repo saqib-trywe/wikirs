@@ -271,6 +271,51 @@ fn scenario() -> Vec<Step> {
             input: json!({}),
             cli: &["rebuild-index"],
         },
+        Step {
+            op: "tag_page",
+            input: json!({ "page": "eng/rust", "tags": ["project/wikirs", "lang/rust"] }),
+            cli: &["tag-page", "eng/rust", "project/wikirs", "lang/rust"],
+        },
+        Step {
+            op: "rename_tag",
+            input: json!({ "from": "lang", "to": "language" }),
+            cli: &["rename-tag", "lang", "language"],
+        },
+        Step {
+            op: "untag_page",
+            input: json!({ "page": "eng/rust", "tags": ["project/wikirs"] }),
+            cli: &["untag-page", "eng/rust", "project/wikirs"],
+        },
+        Step {
+            op: "move_page",
+            input: json!({ "from": "eng/rust", "to": "lang/rust", "dry_run": true }),
+            cli: &["move-page", "eng/rust", "lang/rust", "--dry-run"],
+        },
+        Step {
+            op: "move_page",
+            input: json!({ "from": "eng/rust", "to": "eng/rust/inside" }),
+            cli: &["move-page", "eng/rust", "eng/rust/inside"],
+        },
+        Step {
+            op: "move_page",
+            input: json!({ "from": "eng/async-notes", "to": "lang/async" }),
+            cli: &["move-page", "eng/async-notes", "lang/async"],
+        },
+        Step {
+            op: "get_page",
+            input: json!({ "page": "eng/rust" }),
+            cli: &["get-page", "eng/rust"],
+        },
+        Step {
+            op: "delete_page",
+            input: json!({ "page": "lang/async" }),
+            cli: &["delete-page", "lang/async"],
+        },
+        Step {
+            op: "delete_page",
+            input: json!({ "page": "nope", "recursive": true }),
+            cli: &["delete-page", "nope", "--recursive"],
+        },
     ]
 }
 
@@ -399,16 +444,26 @@ async fn every_interface_behaves_identically() {
         .iter()
         .filter_map(|v| v["error"]["kind"].as_str())
         .collect();
-    let content = core
-        .iter()
-        .rev()
-        .find_map(|v| v["result"]["content"].as_str())
-        .unwrap();
+    let at = |op: &str, page: Option<&str>| {
+        steps
+            .iter()
+            .rposition(|s| s.op == op && page.is_none_or(|p| s.input["page"] == p))
+            .unwrap()
+    };
     assert_eq!(
-        content, "# Notes\n\nv3\n",
+        core[at("get_page", Some("notes"))]["result"]["content"],
+        "# Notes\n\nv3\n",
         "writes and edits landed; the dry run didn't"
     );
-    let status = &core[core.len() - 2]["result"];
+    // After the moves: eng/rust's Links to the moved Page were rewritten, its Tags renamed.
+    let rust = &core[at("get_page", Some("eng/rust"))]["result"];
+    let rust_content = rust["content"].as_str().unwrap();
+    assert!(
+        rust_content.contains("[[lang/async]] [[lang/async#nope]] [[lang/async]]"),
+        "{rust_content}"
+    );
+    assert_eq!(rust["tags"], json!(["language/rust", "language/unsafe"]));
+    let status = &core[at("index_status", None)]["result"];
     assert_eq!(
         (
             status["pages"].as_i64(),
@@ -418,7 +473,7 @@ async fn every_interface_behaves_identically() {
         (Some(3), Some(5), Some(2)),
         "3 Pages, 5 Links written, Tags lang/rust and lang/unsafe"
     );
-    let check = &core[core.len() - 3]["result"]["diagnostics"];
+    let check = &core[at("check", None)]["result"]["diagnostics"];
     let found: Vec<&str> = check
         .as_array()
         .unwrap()
@@ -446,7 +501,9 @@ async fn every_interface_behaves_identically() {
             "no_match",
             "ambiguous_match",
             "invalid_input",
-            "invalid_input"
+            "invalid_input",
+            "invalid_path",
+            "not_found"
         ]
     );
 }

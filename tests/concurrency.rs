@@ -172,6 +172,64 @@ mod crash {
         assert_eq!(report[0]["path"], "p.md");
     }
 
+    /// A move is several edits (Link splices, then file moves); a crash after
+    /// any number of them must still end in the fully moved Wiki.
+    #[test]
+    fn a_move_crashed_at_every_step_is_finished_at_the_next_open() {
+        for applied in 0..4 {
+            let (_dir, wiki) = temp_wiki();
+            std::fs::create_dir_all(wiki.root.join("eng/rust")).unwrap();
+            std::fs::write(
+                wiki.root.join("eng/rust.md"),
+                "# Rust\n\n[a](rust/async.md)\n",
+            )
+            .unwrap();
+            std::fs::write(wiki.root.join("eng/rust/async.md"), "# Async\n").unwrap();
+            std::fs::write(
+                wiki.root.join("notes.md"),
+                "[[eng/rust]] and [[eng/rust/async]]\n",
+            )
+            .unwrap();
+            // Edits: modify notes.md, move eng/rust.md, move eng/rust/async.md.
+            let out = wiki
+                .cmd(&["move-page", "eng/rust", "lang/rust"])
+                .env("WIKIRS_TEST_CRASH_AFTER_EDITS", applied.to_string())
+                .output()
+                .unwrap();
+            if applied < 3 {
+                assert!(
+                    !out.status.success(),
+                    "crash hook didn't fire after {applied} edits"
+                );
+            }
+            let status = wiki.json(&["index-status"]);
+            assert_eq!(
+                status["result"]["unrecovered_edits"],
+                serde_json::json!([]),
+                "after {applied}"
+            );
+            assert_eq!(
+                wiki.page("notes.md"),
+                "[[lang/rust]] and [[lang/rust/async]]\n",
+                "after {applied}"
+            );
+            assert_eq!(
+                wiki.page("lang/rust.md"),
+                "# Rust\n\n[a](rust/async.md)\n",
+                "after {applied}"
+            );
+            assert_eq!(
+                wiki.page("lang/rust/async.md"),
+                "# Async\n",
+                "after {applied}"
+            );
+            assert!(
+                !wiki.root.join("eng").exists(),
+                "after {applied}: emptied folders are removed"
+            );
+        }
+    }
+
     #[test]
     fn a_crashed_create_is_finished_too() {
         let (_dir, wiki) = temp_wiki();
