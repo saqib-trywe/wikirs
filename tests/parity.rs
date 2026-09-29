@@ -493,7 +493,7 @@ fn via_cli(steps: &[Step]) -> Vec<Value> {
             let out = Command::new(env!("CARGO_BIN_EXE_wikirs"))
                 .env("WIKIRS_CACHE_DIR", dir.path().join("cache"))
                 // Where `open_isolated` puts machine settings for the same base.
-                .env("WIKIRS_CONFIG_DIR", dir.path().join("cache/config"))
+                .env("WIKIRS_CONFIG_DIR", dir.path().join("cache").join("config"))
                 .arg("--wiki")
                 .arg(dir.path().join("wiki"))
                 .arg("--json")
