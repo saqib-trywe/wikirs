@@ -358,7 +358,8 @@ fn atomic_write(target: &Path, bytes: &[u8]) -> std::io::Result<()> {
 fn atomic_copy(source: &Path, target: &Path) -> std::io::Result<()> {
     let tmp = temp_beside(target)?;
     fs::copy(source, &tmp)?;
-    fs::File::open(&tmp)?.sync_all()?;
+    // Flushing needs write access on Windows.
+    fs::OpenOptions::new().write(true).open(&tmp)?.sync_all()?;
     fs::rename(&tmp, target)
 }
 
