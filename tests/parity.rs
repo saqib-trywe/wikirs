@@ -408,6 +408,91 @@ fn scenario() -> Vec<Step> {
             input: json!({}),
             cli: &["get-config"],
         },
+        Step {
+            op: "add_attachment",
+            input: json!({ "page": "eng/rust", "name": "d.png",
+                           "source": { "base64": "iVBORw0K" }, "dry_run": true }),
+            cli: &[
+                "add-attachment",
+                "eng/rust",
+                "d.png",
+                "--base64",
+                "iVBORw0K",
+                "--dry-run",
+            ],
+        },
+        Step {
+            op: "add_attachment",
+            input: json!({ "page": "eng/rust", "name": "d.png", "source": { "base64": "iVBORw0K" } }),
+            cli: &[
+                "add-attachment",
+                "eng/rust",
+                "d.png",
+                "--base64",
+                "iVBORw0K",
+            ],
+        },
+        Step {
+            op: "add_attachment",
+            input: json!({ "page": "eng/rust", "name": "d.png", "source": { "base64": "AAE=" } }),
+            cli: &["add-attachment", "eng/rust", "d.png", "--base64", "AAE="],
+        },
+        Step {
+            op: "add_attachment",
+            input: json!({ "page": "nope", "name": "d.png", "source": { "base64": "AAE=" } }),
+            cli: &["add-attachment", "nope", "d.png", "--base64", "AAE="],
+        },
+        Step {
+            op: "list_attachments",
+            input: json!({ "page": "eng/rust" }),
+            cli: &["list-attachments", "--page", "eng/rust"],
+        },
+        Step {
+            op: "read_attachment",
+            input: json!({ "path": "eng/rust/d.png" }),
+            cli: &["read-attachment", "eng/rust/d.png"],
+        },
+        Step {
+            op: "read_attachment",
+            input: json!({ "path": "eng/rust/d-2.png", "as": "local_path" }),
+            cli: &["read-attachment", "eng/rust/d-2.png", "--as", "local-path"],
+        },
+        Step {
+            op: "create_page",
+            input: json!({ "path": "gallery", "content": "![d](eng/rust/d.png)\n" }),
+            cli: &[
+                "create-page",
+                "--path",
+                "gallery",
+                "--content",
+                "![d](eng/rust/d.png)\n",
+            ],
+        },
+        Step {
+            op: "move_attachment",
+            input: json!({ "from": "eng/rust/d.png", "to": "img/d.png" }),
+            cli: &["move-attachment", "eng/rust/d.png", "img/d.png"],
+        },
+        Step {
+            op: "move_attachment",
+            input: json!({ "from": "eng/rust/d-2.png", "to": "img/d.png" }),
+            cli: &["move-attachment", "eng/rust/d-2.png", "img/d.png"],
+        },
+        Step {
+            op: "get_page",
+            input: json!({ "page": "gallery" }),
+            cli: &["get-page", "gallery"],
+        },
+        Step {
+            op: "delete_attachment",
+            input: json!({ "path": "img/d.png" }),
+            cli: &["delete-attachment", "img/d.png"],
+        },
+        Step {
+            op: "delete_attachment",
+            input: json!({ "path": "img/d.png" }),
+            cli: &["delete-attachment", "img/d.png"],
+        },
     ]
 }
 
@@ -574,6 +659,7 @@ async fn every_interface_behaves_identically() {
 }
 
 /// What the scenario's core results must show, beyond the Interfaces agreeing.
+#[allow(clippy::too_many_lines)] // one flat list of assertions
 fn check_scenario(steps: &[Step], core: &[Value]) {
     // The scenario really exercises the error kinds it claims to.
     let kinds: Vec<&str> = core
@@ -644,9 +730,16 @@ fn check_scenario(steps: &[Step], core: &[Value]) {
             "invalid_input",
             "already_exists",
             "invalid_input",
+            "not_found",
+            "not_found",
+            "already_exists",
             "not_found"
         ]
     );
+    let gallery = &core[at("get_page", Some("gallery"))]["result"]["content"];
+    assert_eq!(gallery, "![d](img/d.png)\n", "the Link followed the move");
+    let deleted = &core[at("delete_attachment", None) - 1]["warnings"];
+    assert_eq!(deleted[0]["kind"], "link_will_break", "{deleted}");
     let config = &core[at("get_config", None)]["result"]["settings"];
     let sources: Vec<(&str, &str)> = config
         .as_array()

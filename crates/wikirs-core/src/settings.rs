@@ -545,6 +545,15 @@ impl Ignore {
     pub fn matches(&self, rel: &str) -> bool {
         self.0.as_ref().is_some_and(|set| set.is_match(rel))
     }
+
+    /// Whether `rel` or any folder above it is ignored.
+    #[must_use]
+    pub fn matches_path(&self, rel: &str) -> bool {
+        rel.match_indices('/')
+            .map(|(i, _)| &rel[..i])
+            .chain([rel])
+            .any(|prefix| self.matches(prefix))
+    }
 }
 
 #[cfg(test)]
@@ -631,6 +640,12 @@ mod tests {
             assert!(!ignore.matches(no), "{no}");
         }
         assert!(!Ignore::default().matches("anything"));
+        assert!(ignore.matches_path("a/x.bak"), "the path itself");
+        assert!(
+            ignore.matches_path("a/drafts/x.md"),
+            "under an ignored folder"
+        );
+        assert!(!ignore.matches_path("a/drafts2/x.md"));
         assert_eq!(Ignore::new(&[" ".into(), "a[".into()]).1.len(), 2);
     }
 }

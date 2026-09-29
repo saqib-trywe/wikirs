@@ -7,6 +7,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     Error, Kind, Operation, Result, Wiki,
+    attachments::{
+        AddAttachment, DeleteAttachment, ListAttachments, MoveAttachment, ReadAttachment,
+    },
     config::{GetConfig, Init, SetConfig},
     error::ChangedFile,
     hierarchy::{Children, ListSpaces, ReorderPage},
@@ -42,6 +45,11 @@ crate::operations![
     TagPage,
     UntagPage,
     RenameTag,
+    AddAttachment,
+    ListAttachments,
+    ReadAttachment,
+    MoveAttachment,
+    DeleteAttachment,
     Search,
     IndexStatus,
     RebuildIndex,

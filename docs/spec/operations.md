@@ -23,7 +23,7 @@ Granularity is one Operation per user intent, with reads kept cheap and single-p
 - **Filter**: `{ space?, path_prefix?, tag?, exact?: bool }`. `tag` includes descendant Tags unless `exact`.
 - **Scope**: `{ space? | path_prefix? }`, defaulting to the whole Wiki.
 - **Plan**: `{ edits: [Edit], warnings: [Warning] }`.
-  - **Edit**: `create(path, content) | modify(path, base_version, splices: [{range, old, new}]) | move(from, to) | delete(path)`. Splices are byte ranges into the original file; every other byte is unchanged.
+  - **Edit**: `create(path, content) | create_binary(path, size, version) | modify(path, base_version, splices: [{range, old, new}]) | move(from, to) | delete(path)`. Splices are byte ranges into the original file; every other byte is unchanged. `create_binary` (a new Attachment) carries no content: the bytes are staged in the cache dir before the journal is written, so a crashed Plan can still finish it. A path outside the Wiki (the machine settings file) is absolute.
 - **Warning**: non-fatal note in a result or Plan, e.g. `link_will_break{from, link}`, `case_fallback`, `mixed_case_tag`, `heading_missing`.
 - **Diagnostic**: `{ kind, page, range, message }` where `kind` is `broken_link | heading_missing | case_fallback | mixed_case_tag | unrecovered_edit` (an edit from a crashed Plan that journal recovery left alone because the file had changed; see [process-model.md](process-model.md#mutations)).
 - **LinkStatus**: `ok | broken | heading_missing | case_fallback`.
@@ -151,6 +151,10 @@ Query syntax is plain terms and `"quoted phrases"`; the engine's own syntax is n
 | `delete_attachment` | mutation | `path` | Plan (warnings list Links that will break) | `NotFound` |
 
 Attachments have their own move and delete because an Attachment path and a Page Path can be indistinguishable (extensionless files).
+
+- `add_attachment.source` is `{ local_path }` or `{ base64 }`, exactly one. The Page must exist. A name taken in the folder, ignoring case (a Child Page's folder counts), gets `-2`, `-3`… before the extension, with a `renamed` warning; a path matching `ignore` gets an `ignored` warning. A `local_path` is copied, never moved.
+- `list_attachments{page}` lists that folder's own files, not its Child Pages' (a Placeholder's folder works too); `list_attachments{scope}` lists everything in it. Both at once is `InvalidInput`.
+- `read_attachment.as` defaults to `bytes`, returned as `base64`. Hidden and ignored files aren't Attachments (`NotFound`).
 
 ## Index
 

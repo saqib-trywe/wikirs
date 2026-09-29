@@ -29,6 +29,7 @@ yaml-rust2 = "0.13"
 percent-encoding = "2.3"
 toml_edit = "0.25"
 globset = "0.4"
+base64 = "0.23"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

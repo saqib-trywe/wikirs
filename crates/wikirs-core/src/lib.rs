@@ -3,6 +3,7 @@
 //! Adapters (CLI, MCP, HTTP, TUI, GUI) are generated from [`ops::registry`] and
 //! stay thin (ADR 0004).
 
+pub mod attachments;
 pub mod config;
 pub mod error;
 pub mod frontmatter;

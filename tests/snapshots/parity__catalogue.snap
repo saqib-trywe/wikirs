@@ -49,6 +49,34 @@ expression: "wikirs_core::catalogue()"
                 "type": "object"
               },
               {
+                "description": "Create a new file with binary content (an Attachment). The bytes are\nstaged in the cache dir, not carried in the Plan.",
+                "properties": {
+                  "op": {
+                    "const": "create_binary",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "size": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "version": {
+                    "description": "Hash of the content, as a `Version`.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "size",
+                  "version"
+                ],
+                "type": "object"
+              },
+              {
                 "description": "Splice an existing file. Every byte outside the splices is unchanged.",
                 "properties": {
                   "base_version": {
@@ -383,6 +411,34 @@ expression: "wikirs_core::catalogue()"
                   "op",
                   "path",
                   "content"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Create a new file with binary content (an Attachment). The bytes are\nstaged in the cache dir, not carried in the Plan.",
+                "properties": {
+                  "op": {
+                    "const": "create_binary",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "size": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "version": {
+                    "description": "Hash of the content, as a `Version`.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "size",
+                  "version"
                 ],
                 "type": "object"
               },
@@ -1461,6 +1517,34 @@ expression: "wikirs_core::catalogue()"
                 "type": "object"
               },
               {
+                "description": "Create a new file with binary content (an Attachment). The bytes are\nstaged in the cache dir, not carried in the Plan.",
+                "properties": {
+                  "op": {
+                    "const": "create_binary",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "size": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "version": {
+                    "description": "Hash of the content, as a `Version`.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "size",
+                  "version"
+                ],
+                "type": "object"
+              },
+              {
                 "description": "Splice an existing file. Every byte outside the splices is unchanged.",
                 "properties": {
                   "base_version": {
@@ -1676,6 +1760,34 @@ expression: "wikirs_core::catalogue()"
                   "op",
                   "path",
                   "content"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Create a new file with binary content (an Attachment). The bytes are\nstaged in the cache dir, not carried in the Plan.",
+                "properties": {
+                  "op": {
+                    "const": "create_binary",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "size": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "version": {
+                    "description": "Hash of the content, as a `Version`.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "size",
+                  "version"
                 ],
                 "type": "object"
               },
@@ -1926,6 +2038,34 @@ expression: "wikirs_core::catalogue()"
                 "type": "object"
               },
               {
+                "description": "Create a new file with binary content (an Attachment). The bytes are\nstaged in the cache dir, not carried in the Plan.",
+                "properties": {
+                  "op": {
+                    "const": "create_binary",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "size": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "version": {
+                    "description": "Hash of the content, as a `Version`.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "size",
+                  "version"
+                ],
+                "type": "object"
+              },
+              {
                 "description": "Splice an existing file. Every byte outside the splices is unchanged.",
                 "properties": {
                   "base_version": {
@@ -2144,6 +2284,34 @@ expression: "wikirs_core::catalogue()"
                 "type": "object"
               },
               {
+                "description": "Create a new file with binary content (an Attachment). The bytes are\nstaged in the cache dir, not carried in the Plan.",
+                "properties": {
+                  "op": {
+                    "const": "create_binary",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "size": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "version": {
+                    "description": "Hash of the content, as a `Version`.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "size",
+                  "version"
+                ],
+                "type": "object"
+              },
+              {
                 "description": "Splice an existing file. Every byte outside the splices is unchanged.",
                 "properties": {
                   "base_version": {
@@ -2351,6 +2519,34 @@ expression: "wikirs_core::catalogue()"
                   "op",
                   "path",
                   "content"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Create a new file with binary content (an Attachment). The bytes are\nstaged in the cache dir, not carried in the Plan.",
+                "properties": {
+                  "op": {
+                    "const": "create_binary",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "size": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "version": {
+                    "description": "Hash of the content, as a `Version`.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "size",
+                  "version"
                 ],
                 "type": "object"
               },
@@ -2584,6 +2780,34 @@ expression: "wikirs_core::catalogue()"
                 "type": "object"
               },
               {
+                "description": "Create a new file with binary content (an Attachment). The bytes are\nstaged in the cache dir, not carried in the Plan.",
+                "properties": {
+                  "op": {
+                    "const": "create_binary",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "size": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "version": {
+                    "description": "Hash of the content, as a `Version`.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "size",
+                  "version"
+                ],
+                "type": "object"
+              },
+              {
                 "description": "Splice an existing file. Every byte outside the splices is unchanged.",
                 "properties": {
                   "base_version": {
@@ -2804,6 +3028,34 @@ expression: "wikirs_core::catalogue()"
                   "op",
                   "path",
                   "content"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Create a new file with binary content (an Attachment). The bytes are\nstaged in the cache dir, not carried in the Plan.",
+                "properties": {
+                  "op": {
+                    "const": "create_binary",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "size": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "version": {
+                    "description": "Hash of the content, as a `Version`.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "size",
+                  "version"
                 ],
                 "type": "object"
               },
@@ -3031,6 +3283,34 @@ expression: "wikirs_core::catalogue()"
                 "type": "object"
               },
               {
+                "description": "Create a new file with binary content (an Attachment). The bytes are\nstaged in the cache dir, not carried in the Plan.",
+                "properties": {
+                  "op": {
+                    "const": "create_binary",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "size": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "version": {
+                    "description": "Hash of the content, as a `Version`.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "size",
+                  "version"
+                ],
+                "type": "object"
+              },
+              {
                 "description": "Splice an existing file. Every byte outside the splices is unchanged.",
                 "properties": {
                   "base_version": {
@@ -3249,6 +3529,34 @@ expression: "wikirs_core::catalogue()"
                   "op",
                   "path",
                   "content"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Create a new file with binary content (an Attachment). The bytes are\nstaged in the cache dir, not carried in the Plan.",
+                "properties": {
+                  "op": {
+                    "const": "create_binary",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "size": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "version": {
+                    "description": "Hash of the content, as a `Version`.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "size",
+                  "version"
                 ],
                 "type": "object"
               },
@@ -3472,6 +3780,34 @@ expression: "wikirs_core::catalogue()"
                 "type": "object"
               },
               {
+                "description": "Create a new file with binary content (an Attachment). The bytes are\nstaged in the cache dir, not carried in the Plan.",
+                "properties": {
+                  "op": {
+                    "const": "create_binary",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "size": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "version": {
+                    "description": "Hash of the content, as a `Version`.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "size",
+                  "version"
+                ],
+                "type": "object"
+              },
+              {
                 "description": "Splice an existing file. Every byte outside the splices is unchanged.",
                 "properties": {
                   "base_version": {
@@ -3627,6 +3963,935 @@ expression: "wikirs_core::catalogue()"
           "pages"
         ],
         "title": "RenameTagOutput",
+        "type": "object"
+      }
+    },
+    {
+      "description": "Add an Attachment to a Page's folder, from a local file or base64. A taken name gets a numeric suffix.",
+      "input_schema": {
+        "$defs": {
+          "AttachmentSource": {
+            "additionalProperties": false,
+            "description": "Where the new Attachment's content comes from: exactly one of the two.",
+            "properties": {
+              "base64": {
+                "description": "The content, base64-encoded.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "local_path": {
+                "description": "A file on this machine to copy in (Interfaces with local file access only).",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "description": "Add an Attachment to a Page's folder; a taken name gets a numeric suffix.",
+        "properties": {
+          "dry_run": {
+            "default": false,
+            "description": "Return the Plan without applying it.",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "File name, e.g. `diagram.png`.",
+            "type": "string"
+          },
+          "page": {
+            "description": "Page Path of the Page it belongs to.",
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/$defs/AttachmentSource"
+          }
+        },
+        "required": [
+          "page",
+          "name",
+          "source"
+        ],
+        "title": "AddAttachmentInput",
+        "type": "object"
+      },
+      "kind": "mutation",
+      "name": "add_attachment",
+      "output_schema": {
+        "$defs": {
+          "Edit": {
+            "description": "One file edit. Paths are relative to the Wiki root.",
+            "oneOf": [
+              {
+                "description": "Create a new file.",
+                "properties": {
+                  "content": {
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "create",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "content"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Create a new file with binary content (an Attachment). The bytes are\nstaged in the cache dir, not carried in the Plan.",
+                "properties": {
+                  "op": {
+                    "const": "create_binary",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "size": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "version": {
+                    "description": "Hash of the content, as a `Version`.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "size",
+                  "version"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Splice an existing file. Every byte outside the splices is unchanged.",
+                "properties": {
+                  "base_version": {
+                    "description": "Hash of the file this edit was planned against.",
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "modify",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "splices": {
+                    "description": "Non-overlapping byte ranges of the original file, in order.",
+                    "items": {
+                      "$ref": "#/$defs/Splice"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "base_version",
+                  "splices"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Move a file, unchanged, to a path that doesn't exist yet.",
+                "properties": {
+                  "from": {
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "move",
+                    "type": "string"
+                  },
+                  "to": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "from",
+                  "to"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Delete a file.",
+                "properties": {
+                  "op": {
+                    "const": "delete",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "Plan": {
+            "properties": {
+              "edits": {
+                "items": {
+                  "$ref": "#/$defs/Edit"
+                },
+                "type": "array"
+              },
+              "warnings": {
+                "items": {
+                  "$ref": "#/$defs/Warning"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "edits",
+              "warnings"
+            ],
+            "type": "object"
+          },
+          "Splice": {
+            "properties": {
+              "new": {
+                "type": "string"
+              },
+              "old": {
+                "type": "string"
+              },
+              "range": {
+                "description": "Byte range `[start, end)` in the original file.",
+                "items": {
+                  "format": "uint",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              }
+            },
+            "required": [
+              "range",
+              "old",
+              "new"
+            ],
+            "type": "object"
+          },
+          "Warning": {
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "message"
+            ],
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "applied": {
+            "type": "boolean"
+          },
+          "path": {
+            "description": "The final path, from the Wiki root.",
+            "type": "string"
+          },
+          "plan": {
+            "$ref": "#/$defs/Plan"
+          },
+          "size": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "plan",
+          "applied",
+          "size",
+          "version"
+        ],
+        "title": "AddAttachmentOutput",
+        "type": "object"
+      }
+    },
+    {
+      "description": "List Attachments: a Page's own, or all of them in a Space, path prefix or the Wiki.",
+      "input_schema": {
+        "$defs": {
+          "Scope": {
+            "additionalProperties": false,
+            "description": "Which part of the Wiki a query covers (operations.md `Scope`).",
+            "properties": {
+              "path_prefix": {
+                "description": "Only Pages whose Page Path starts with this.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "space": {
+                "description": "Only this Space: its home Page and everything under it.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "description": "List Attachments: one Page's own, or everything in a part of the Wiki.",
+        "properties": {
+          "page": {
+            "description": "Only this Page's own Attachments (its folder, not its Child Pages').",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "scope": {
+            "$ref": "#/$defs/Scope",
+            "description": "Everything in this part of the Wiki (not with `page`)."
+          }
+        },
+        "title": "ListAttachmentsInput",
+        "type": "object"
+      },
+      "kind": "query",
+      "name": "list_attachments",
+      "output_schema": {
+        "$defs": {
+          "AttachmentRow": {
+            "properties": {
+              "modified": {
+                "description": "Last modified, milliseconds since the Unix epoch.",
+                "format": "int64",
+                "type": "integer"
+              },
+              "path": {
+                "description": "Path from the Wiki root, extension included.",
+                "type": "string"
+              },
+              "size": {
+                "description": "Bytes.",
+                "format": "int64",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "path",
+              "size",
+              "modified"
+            ],
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "attachments": {
+            "items": {
+              "$ref": "#/$defs/AttachmentRow"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "attachments"
+        ],
+        "title": "ListAttachmentsOutput",
+        "type": "object"
+      }
+    },
+    {
+      "description": "Read an Attachment: its content as base64, or its absolute local path.",
+      "input_schema": {
+        "$defs": {
+          "ReadAs": {
+            "oneOf": [
+              {
+                "const": "bytes",
+                "description": "The content, base64-encoded.",
+                "type": "string"
+              },
+              {
+                "const": "local_path",
+                "description": "The file's absolute path (Interfaces with local file access only).",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "description": "Read an Attachment's content, or where it is on disk.",
+        "properties": {
+          "as": {
+            "$ref": "#/$defs/ReadAs",
+            "description": "`bytes` (default) or `local_path`."
+          },
+          "path": {
+            "description": "Path from the Wiki root, e.g. `eng/rust/diagram.png`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "ReadAttachmentInput",
+        "type": "object"
+      },
+      "kind": "query",
+      "name": "read_attachment",
+      "output_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "base64": {
+            "description": "With `as: bytes`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "local_path": {
+            "description": "With `as: local_path`: the absolute path.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "path": {
+            "type": "string"
+          },
+          "size": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "size",
+          "version"
+        ],
+        "title": "ReadAttachmentOutput",
+        "type": "object"
+      }
+    },
+    {
+      "description": "Move or rename an Attachment, rewriting every Link to it.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "description": "Move or rename an Attachment, rewriting every Link to it.",
+        "properties": {
+          "dry_run": {
+            "default": false,
+            "description": "Return the Plan without applying it.",
+            "type": "boolean"
+          },
+          "from": {
+            "description": "Current path, e.g. `eng/rust/diagram.png`.",
+            "type": "string"
+          },
+          "to": {
+            "description": "New path.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ],
+        "title": "MoveAttachmentInput",
+        "type": "object"
+      },
+      "kind": "mutation",
+      "name": "move_attachment",
+      "output_schema": {
+        "$defs": {
+          "Edit": {
+            "description": "One file edit. Paths are relative to the Wiki root.",
+            "oneOf": [
+              {
+                "description": "Create a new file.",
+                "properties": {
+                  "content": {
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "create",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "content"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Create a new file with binary content (an Attachment). The bytes are\nstaged in the cache dir, not carried in the Plan.",
+                "properties": {
+                  "op": {
+                    "const": "create_binary",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "size": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "version": {
+                    "description": "Hash of the content, as a `Version`.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "size",
+                  "version"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Splice an existing file. Every byte outside the splices is unchanged.",
+                "properties": {
+                  "base_version": {
+                    "description": "Hash of the file this edit was planned against.",
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "modify",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "splices": {
+                    "description": "Non-overlapping byte ranges of the original file, in order.",
+                    "items": {
+                      "$ref": "#/$defs/Splice"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "base_version",
+                  "splices"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Move a file, unchanged, to a path that doesn't exist yet.",
+                "properties": {
+                  "from": {
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "move",
+                    "type": "string"
+                  },
+                  "to": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "from",
+                  "to"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Delete a file.",
+                "properties": {
+                  "op": {
+                    "const": "delete",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "Plan": {
+            "properties": {
+              "edits": {
+                "items": {
+                  "$ref": "#/$defs/Edit"
+                },
+                "type": "array"
+              },
+              "warnings": {
+                "items": {
+                  "$ref": "#/$defs/Warning"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "edits",
+              "warnings"
+            ],
+            "type": "object"
+          },
+          "Splice": {
+            "properties": {
+              "new": {
+                "type": "string"
+              },
+              "old": {
+                "type": "string"
+              },
+              "range": {
+                "description": "Byte range `[start, end)` in the original file.",
+                "items": {
+                  "format": "uint",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              }
+            },
+            "required": [
+              "range",
+              "old",
+              "new"
+            ],
+            "type": "object"
+          },
+          "Warning": {
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "message"
+            ],
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "applied": {
+            "type": "boolean"
+          },
+          "from": {
+            "type": "string"
+          },
+          "links_rewritten": {
+            "description": "Links rewritten across the Wiki.",
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "plan": {
+            "$ref": "#/$defs/Plan"
+          },
+          "to": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "plan",
+          "applied",
+          "links_rewritten"
+        ],
+        "title": "MoveAttachmentOutput",
+        "type": "object"
+      }
+    },
+    {
+      "description": "Delete an Attachment. The Plan warns about Links that will break.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "description": "Delete an Attachment. The Plan warns about Links that will break.",
+        "properties": {
+          "dry_run": {
+            "default": false,
+            "description": "Return the Plan without applying it.",
+            "type": "boolean"
+          },
+          "path": {
+            "description": "Path from the Wiki root.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "DeleteAttachmentInput",
+        "type": "object"
+      },
+      "kind": "mutation",
+      "name": "delete_attachment",
+      "output_schema": {
+        "$defs": {
+          "Edit": {
+            "description": "One file edit. Paths are relative to the Wiki root.",
+            "oneOf": [
+              {
+                "description": "Create a new file.",
+                "properties": {
+                  "content": {
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "create",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "content"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Create a new file with binary content (an Attachment). The bytes are\nstaged in the cache dir, not carried in the Plan.",
+                "properties": {
+                  "op": {
+                    "const": "create_binary",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "size": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "version": {
+                    "description": "Hash of the content, as a `Version`.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "size",
+                  "version"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Splice an existing file. Every byte outside the splices is unchanged.",
+                "properties": {
+                  "base_version": {
+                    "description": "Hash of the file this edit was planned against.",
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "modify",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "splices": {
+                    "description": "Non-overlapping byte ranges of the original file, in order.",
+                    "items": {
+                      "$ref": "#/$defs/Splice"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "base_version",
+                  "splices"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Move a file, unchanged, to a path that doesn't exist yet.",
+                "properties": {
+                  "from": {
+                    "type": "string"
+                  },
+                  "op": {
+                    "const": "move",
+                    "type": "string"
+                  },
+                  "to": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "from",
+                  "to"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Delete a file.",
+                "properties": {
+                  "op": {
+                    "const": "delete",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "Plan": {
+            "properties": {
+              "edits": {
+                "items": {
+                  "$ref": "#/$defs/Edit"
+                },
+                "type": "array"
+              },
+              "warnings": {
+                "items": {
+                  "$ref": "#/$defs/Warning"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "edits",
+              "warnings"
+            ],
+            "type": "object"
+          },
+          "Splice": {
+            "properties": {
+              "new": {
+                "type": "string"
+              },
+              "old": {
+                "type": "string"
+              },
+              "range": {
+                "description": "Byte range `[start, end)` in the original file.",
+                "items": {
+                  "format": "uint",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              }
+            },
+            "required": [
+              "range",
+              "old",
+              "new"
+            ],
+            "type": "object"
+          },
+          "Warning": {
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "message"
+            ],
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "applied": {
+            "type": "boolean"
+          },
+          "path": {
+            "type": "string"
+          },
+          "plan": {
+            "$ref": "#/$defs/Plan"
+          }
+        },
+        "required": [
+          "path",
+          "plan",
+          "applied"
+        ],
+        "title": "DeleteAttachmentOutput",
         "type": "object"
       }
     },
@@ -3791,6 +5056,34 @@ expression: "wikirs_core::catalogue()"
                   "op",
                   "path",
                   "content"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Create a new file with binary content (an Attachment). The bytes are\nstaged in the cache dir, not carried in the Plan.",
+                "properties": {
+                  "op": {
+                    "const": "create_binary",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "size": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "version": {
+                    "description": "Hash of the content, as a `Version`.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "size",
+                  "version"
                 ],
                 "type": "object"
               },
@@ -4031,6 +5324,34 @@ expression: "wikirs_core::catalogue()"
                   "op",
                   "path",
                   "content"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Create a new file with binary content (an Attachment). The bytes are\nstaged in the cache dir, not carried in the Plan.",
+                "properties": {
+                  "op": {
+                    "const": "create_binary",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "size": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "version": {
+                    "description": "Hash of the content, as a `Version`.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "path",
+                  "size",
+                  "version"
                 ],
                 "type": "object"
               },

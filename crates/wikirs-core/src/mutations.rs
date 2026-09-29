@@ -59,7 +59,7 @@ fn file_of(target: &str, kind: TargetKind) -> String {
 }
 
 /// How a file is named in Links: Page Path for Pages, path for Attachments.
-fn display(file: &str) -> String {
+pub(crate) fn display(file: &str) -> String {
     page_path(file)
 }
 
@@ -170,7 +170,7 @@ fn plan_moves(tx: &mut Tx, from: &PagePath, to: &PagePath) -> Result<Vec<(String
 
 /// Rewrites every Link affected by `moved` (old file → new file): Links to a
 /// moved file, and relative Links inside a moved Page. Returns how many.
-fn rewrite_links_for(tx: &mut Tx, moved: &BTreeMap<String, String>) -> Result<usize> {
+pub(crate) fn rewrite_links_for(tx: &mut Tx, moved: &BTreeMap<String, String>) -> Result<usize> {
     let wiki = tx.wiki().clone();
     // The Index only says which Pages might need rewriting; each is re-parsed
     // from what's read now, so a stale Index can't produce a wrong splice.
@@ -331,7 +331,7 @@ impl Operation for DeletePage {
 }
 
 /// Warns about each Link from a surviving Page to a file about to go.
-fn warn_breaking_links(tx: &mut Tx, going: &[String]) -> Result<()> {
+pub(crate) fn warn_breaking_links(tx: &mut Tx, going: &[String]) -> Result<()> {
     let wiki = tx.wiki().clone();
     let going: BTreeSet<&String> = going.iter().collect();
     let mut warnings = Vec::new();

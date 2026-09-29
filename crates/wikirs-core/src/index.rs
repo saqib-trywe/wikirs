@@ -535,6 +535,28 @@ impl Index {
         .map_err(|e| db_err(&e))
     }
 
+    /// Attachments within `scope`, by path.
+    pub(crate) fn attachments(&self, scope: &Scope) -> Result<Vec<AttachmentRow>> {
+        let (cond, args) = scope.sql("path");
+        let mut stmt = self
+            .conn
+            .prepare(&format!(
+                "SELECT path, size, mtime FROM files
+                 WHERE kind = 'attachment' AND {cond} ORDER BY path"
+            ))
+            .map_err(|e| db_err(&e))?;
+        stmt.query_map(rusqlite::params_from_iter(&args), |r| {
+            Ok(AttachmentRow {
+                path: r.get(0)?,
+                size: r.get(1)?,
+                modified: r.get::<_, i64>(2)? / 1_000_000,
+            })
+        })
+        .map_err(|e| db_err(&e))?
+        .collect::<rusqlite::Result<_>>()
+        .map_err(|e| db_err(&e))
+    }
+
     /// Full-text search. `query` is already an FTS5 expression built by the
     /// caller from plain terms and phrases.
     pub fn search(
@@ -608,6 +630,16 @@ pub struct Hit {
     pub snippet: String,
     /// Relevance; higher is better.
     pub score: f64,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct AttachmentRow {
+    /// Path from the Wiki root, extension included.
+    pub path: String,
+    /// Bytes.
+    pub size: i64,
+    /// Last modified, milliseconds since the Unix epoch.
+    pub modified: i64,
 }
 
 /// A Page as the hierarchy sees it.
@@ -878,20 +910,11 @@ fn mtime_of(meta: &fs::Metadata) -> i64 {
 /// Whether a scan would index the file at `rel`: inside the Wiki, with no
 /// hidden segment, and not (under) an ignored path.
 fn indexable(rel: &str, ignore: &Ignore) -> bool {
-    let mut prefix = String::new();
-    for segment in rel.split('/') {
-        if segment.is_empty() || segment.starts_with('.') {
-            return false;
-        }
-        if !prefix.is_empty() {
-            prefix.push('/');
-        }
-        prefix.push_str(segment);
-        if ignore.matches(&prefix) {
-            return false;
-        }
-    }
     !Path::new(rel).is_absolute()
+        && rel
+            .split('/')
+            .all(|segment| !segment.is_empty() && !segment.starts_with('.'))
+        && !ignore.matches_path(rel)
 }
 
 fn scan(root: &Path, ignore: &Ignore) -> (HashMap<String, Scanned>, Vec<Skipped>) {

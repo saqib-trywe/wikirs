@@ -29,6 +29,14 @@ pub struct Plan {
 pub enum Edit {
     /// Create a new file.
     Create { path: String, content: String },
+    /// Create a new file with binary content (an Attachment). The bytes are
+    /// staged in the cache dir, not carried in the Plan.
+    CreateBinary {
+        path: String,
+        size: u64,
+        /// Hash of the content, as a `Version`.
+        version: String,
+    },
     /// Splice an existing file. Every byte outside the splices is unchanged.
     Modify {
         path: String,
@@ -48,7 +56,7 @@ impl Edit {
     /// deletes, so a crash never loses content.
     fn rank(&self) -> u8 {
         match self {
-            Edit::Create { .. } | Edit::Modify { .. } => 0,
+            Edit::Create { .. } | Edit::CreateBinary { .. } | Edit::Modify { .. } => 0,
             Edit::Move { .. } => 1,
             Edit::Delete { .. } => 2,
         }
@@ -57,12 +65,21 @@ impl Edit {
     /// Every path this edit touches.
     fn paths(&self) -> Vec<&str> {
         match self {
-            Edit::Create { path, .. } | Edit::Modify { path, .. } | Edit::Delete { path } => {
-                vec![path]
-            }
+            Edit::Create { path, .. }
+            | Edit::CreateBinary { path, .. }
+            | Edit::Modify { path, .. }
+            | Edit::Delete { path } => vec![path],
             Edit::Move { from, to } => vec![from, to],
         }
     }
+}
+
+/// Where a `create_binary` edit's bytes come from while planning.
+#[derive(Debug)]
+pub enum Blob {
+    Bytes(Vec<u8>),
+    /// A file outside the Wiki, copied (never read whole into memory).
+    File(PathBuf),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -85,6 +102,23 @@ pub fn version_of(bytes: &[u8]) -> String {
     format!("{:032x}", xxhash_rust::xxh3::xxh3_128(bytes))
 }
 
+/// [`version_of`] a file's content, streamed; and its size.
+pub fn version_of_file(path: &Path) -> std::io::Result<(String, u64)> {
+    use std::io::Read;
+    let mut file = fs::File::open(path)?;
+    let mut hasher = xxhash_rust::xxh3::Xxh3::new();
+    let mut buf = vec![0; 64 * 1024];
+    let mut size = 0;
+    loop {
+        let n = file.read(&mut buf)?;
+        if n == 0 {
+            return Ok((format!("{:032x}", hasher.digest128()), size));
+        }
+        hasher.update(&buf[..n]);
+        size += n as u64;
+    }
+}
+
 // ------------------------------------------------------------ transaction
 
 /// What a mutation sees while planning: reads are recorded so apply can
@@ -94,6 +128,8 @@ pub struct Tx<'w> {
     reads: BTreeMap<String, Option<String>>,
     edits: Vec<Edit>,
     warnings: Vec<Warning>,
+    /// Content of `create_binary` edits, by version.
+    blobs: BTreeMap<String, Blob>,
 }
 
 /// A file as read during planning.
@@ -123,8 +159,8 @@ impl Tx<'_> {
     /// Records a file's current hash without decoding it (moves and deletes
     /// carry Attachments too); `false` if it doesn't exist.
     pub fn stat(&mut self, rel: &str) -> Result<bool> {
-        let version = match fs::read(self.wiki.root().join(rel)) {
-            Ok(bytes) => Some(version_of(&bytes)),
+        let version = match version_of_file(&self.wiki.root().join(rel)) {
+            Ok((version, _)) => Some(version),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
             Err(e) => return Err(Error::io(Some(rel), &e)),
         };
@@ -135,6 +171,22 @@ impl Tx<'_> {
 
     pub fn edit(&mut self, edit: Edit) {
         self.edits.push(edit);
+    }
+
+    /// Plans a `create_binary` edit of `blob` at `rel`; returns its size and version.
+    pub fn create_binary(&mut self, rel: &str, blob: Blob) -> Result<(u64, String)> {
+        let (version, size) = match &blob {
+            Blob::Bytes(bytes) => (version_of(bytes), bytes.len() as u64),
+            Blob::File(path) => version_of_file(path)
+                .map_err(|e| Error::io(Some(&path.display().to_string()), &e))?,
+        };
+        self.edits.push(Edit::CreateBinary {
+            path: rel.to_string(),
+            size,
+            version: version.clone(),
+        });
+        self.blobs.insert(version.clone(), blob);
+        Ok((size, version))
     }
 
     pub fn warn(&mut self, kind: &str, message: impl Into<String>) {
@@ -165,12 +217,14 @@ pub fn mutate<T>(
         reads: BTreeMap::new(),
         edits: Vec::new(),
         warnings: Vec::new(),
+        blobs: BTreeMap::new(),
     };
     let value = plan(&mut tx)?;
     let Tx {
         reads,
         mut edits,
         warnings,
+        blobs,
         ..
     } = tx;
     edits.sort_by_key(Edit::rank);
@@ -194,17 +248,19 @@ pub fn mutate<T>(
     if !changed.is_empty() {
         return Err(Error::conflict_changed(&changed));
     }
+    stage(wiki.cache_dir(), blobs)?;
 
     let journal = Journal::new(wiki.root(), &plan)?;
     journal.write(wiki)?;
     for (applied, entry) in journal.entries.iter().enumerate() {
         crash_hook(applied);
         entry
-            .apply(wiki.root())
+            .apply(wiki.root(), wiki.cache_dir())
             .map_err(|e| Error::io(Some(entry.edit.paths()[0]), &e))?;
     }
     remove_empty_dirs(wiki.root(), &journal);
     Journal::remove(wiki.cache_dir())?;
+    unstage(wiki.cache_dir());
     // The Index is a cache: if this fails, the next reconcile repairs it.
     let touched: BTreeSet<&str> = journal
         .entries
@@ -221,7 +277,43 @@ pub fn mutate<T>(
 }
 
 fn version_at(root: &Path, rel: &str) -> Option<String> {
-    fs::read(root.join(rel)).ok().map(|b| version_of(&b))
+    version_of_file(&root.join(rel)).ok().map(|(v, _)| v)
+}
+
+/// Where staged `create_binary` content waits, by version, until its Plan is done.
+fn staged(cache_dir: &Path, version: &str) -> PathBuf {
+    cache_dir.join("staged").join(version)
+}
+
+/// Writes every blob to the staging dir before the journal, so a crashed
+/// Plan can still finish its creates. A source file that changed since
+/// planning is a `Conflict`.
+fn stage(cache_dir: &Path, blobs: BTreeMap<String, Blob>) -> Result<()> {
+    for (version, blob) in blobs {
+        let target = staged(cache_dir, &version);
+        let io = |e: &std::io::Error| Error::io(Some("staged content"), e);
+        match blob {
+            Blob::Bytes(bytes) => atomic_write(&target, &bytes).map_err(|e| io(&e))?,
+            Blob::File(source) => {
+                atomic_copy(&source, &target).map_err(|e| io(&e))?;
+                let (actual, _) = version_of_file(&target).map_err(|e| io(&e))?;
+                if actual != version {
+                    let _ = fs::remove_file(&target);
+                    return Err(Error::conflict_changed(&[ChangedFile {
+                        path: source.display().to_string(),
+                        expected: Some(version),
+                        actual: Some(actual),
+                    }]));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Drops staged content once no journal needs it (the caller holds the lock).
+fn unstage(cache_dir: &Path) {
+    let _ = fs::remove_dir_all(cache_dir.join("staged"));
 }
 
 #[cfg(feature = "test-hooks")]
@@ -254,6 +346,24 @@ pub fn splice(original: &str, splices: &[Splice]) -> String {
 
 /// Temp file in the same folder, fsync, rename over the target (process-model.md).
 fn atomic_write(target: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let tmp = temp_beside(target)?;
+    let mut file = fs::File::create(&tmp)?;
+    file.write_all(bytes)?;
+    file.sync_all()?;
+    drop(file);
+    fs::rename(&tmp, target)
+}
+
+/// [`atomic_write`] with the content of `source`, copied without loading it whole.
+fn atomic_copy(source: &Path, target: &Path) -> std::io::Result<()> {
+    let tmp = temp_beside(target)?;
+    fs::copy(source, &tmp)?;
+    fs::File::open(&tmp)?.sync_all()?;
+    fs::rename(&tmp, target)
+}
+
+/// `.<name>.wikirs-tmp` next to `target`, creating its folder.
+fn temp_beside(target: &Path) -> std::io::Result<PathBuf> {
     let dir = target
         .parent()
         .ok_or_else(|| std::io::Error::other("target has no parent dir"))?;
@@ -262,12 +372,7 @@ fn atomic_write(target: &Path, bytes: &[u8]) -> std::io::Result<()> {
         .file_name()
         .ok_or_else(|| std::io::Error::other("target has no file name"))?
         .to_string_lossy();
-    let tmp = dir.join(format!(".{name}.wikirs-tmp"));
-    let mut file = fs::File::create(&tmp)?;
-    file.write_all(bytes)?;
-    file.sync_all()?;
-    drop(file);
-    fs::rename(&tmp, target)
+    Ok(dir.join(format!(".{name}.wikirs-tmp")))
 }
 
 /// Removes folders that moves and deletes left empty, walking up to (not
@@ -317,9 +422,12 @@ enum State {
 }
 
 impl JournalEntry {
-    fn state(&self, root: &Path) -> State {
+    fn state(&self, root: &Path, cache_dir: &Path) -> State {
         let (before_here, after_here) = match &self.edit {
-            Edit::Create { path, .. } | Edit::Modify { path, .. } | Edit::Delete { path } => {
+            Edit::Create { path, .. }
+            | Edit::CreateBinary { path, .. }
+            | Edit::Modify { path, .. }
+            | Edit::Delete { path } => {
                 let now = version_at(root, path);
                 (now == self.before, now == self.after)
             }
@@ -331,18 +439,24 @@ impl JournalEntry {
                 )
             }
         };
+        // Staged content that's gone can't be finished: report it instead.
+        let unstaged = matches!(&self.edit, Edit::CreateBinary { version, .. }
+            if !staged(cache_dir, version).exists());
         if after_here {
             State::Done
-        } else if before_here {
+        } else if before_here && !unstaged {
             State::Pending
         } else {
             State::Diverged
         }
     }
 
-    fn apply(&self, root: &Path) -> std::io::Result<()> {
+    fn apply(&self, root: &Path, cache_dir: &Path) -> std::io::Result<()> {
         match &self.edit {
             Edit::Create { path, content } => atomic_write(&root.join(path), content.as_bytes()),
+            Edit::CreateBinary { path, version, .. } => {
+                atomic_copy(&staged(cache_dir, version), &root.join(path))
+            }
             Edit::Modify { path, splices, .. } => {
                 let original = fs::read_to_string(root.join(path))?;
                 atomic_write(&root.join(path), splice(&original, splices).as_bytes())
@@ -391,6 +505,11 @@ impl Journal {
                     let after = Some(content.as_bytes().to_vec());
                     files.insert(path.clone(), after.clone());
                     (hash(&before), hash(&after))
+                }
+                Edit::CreateBinary { path, version, .. } => {
+                    // Not read back: no Plan touches a created Attachment again.
+                    let before = state(path, &mut files);
+                    (hash(&before), Some(version.clone()))
                 }
                 Edit::Modify { path, splices, .. } => {
                     let before = state(path, &mut files);
@@ -452,10 +571,10 @@ fn recover(root: &Path, cache_dir: &Path) -> Result<()> {
         .map_err(|e| Error::internal(format!("unreadable journal: {e}")))?;
     let mut unrecovered = Vec::new();
     for entry in &journal.entries {
-        match entry.state(root) {
+        match entry.state(root, cache_dir) {
             State::Done => {}
             State::Pending => entry
-                .apply(root)
+                .apply(root, cache_dir)
                 .map_err(|e| Error::io(Some(entry.edit.paths()[0]), &e))?,
             State::Diverged => unrecovered.push(UnrecoveredEdit {
                 path: entry.edit.paths()[0].to_string(),
@@ -464,6 +583,7 @@ fn recover(root: &Path, cache_dir: &Path) -> Result<()> {
         }
     }
     remove_empty_dirs(root, &journal);
+    unstage(cache_dir);
     if !unrecovered.is_empty() {
         let mut all = read_unrecovered(cache_dir);
         all.extend(unrecovered);
@@ -527,7 +647,7 @@ mod tests {
                     }
                 }
             }
-            match entry.state(root) {
+            match entry.state(root, root) {
                 State::Done => "done",
                 State::Pending => "pending",
                 State::Diverged => "diverged",
@@ -538,5 +658,72 @@ mod tests {
         assert_eq!(state(Some("x"), Some("x")), "diverged", "copied, not moved");
         assert_eq!(state(Some("y"), None), "diverged", "edited since");
         assert_eq!(state(None, None), "diverged", "gone");
+    }
+
+    #[test]
+    fn binary_creates_finish_from_staged_content_or_are_reported() {
+        let dir = tempfile::tempdir().unwrap();
+        let (root, cache) = (dir.path().join("wiki"), dir.path().join("cache"));
+        fs::create_dir_all(&root).unwrap();
+        let bytes = b"\x89PNG\x00\xff".to_vec();
+        let version = version_of(&bytes);
+        let entry = JournalEntry {
+            edit: Edit::CreateBinary {
+                path: "a/d.png".into(),
+                size: bytes.len() as u64,
+                version: version.clone(),
+            },
+            before: None,
+            after: Some(version.clone()),
+        };
+        let journal = Journal {
+            entries: vec![entry],
+        };
+        let write_journal = || {
+            atomic_write(
+                &Journal::path(&cache),
+                &serde_json::to_vec(&journal).unwrap(),
+            )
+            .unwrap();
+        };
+
+        write_journal();
+        stage(
+            &cache,
+            BTreeMap::from([(version.clone(), Blob::Bytes(bytes.clone()))]),
+        )
+        .unwrap();
+        recover(&root, &cache).unwrap();
+        assert_eq!(fs::read(root.join("a/d.png")).unwrap(), bytes, "finished");
+        assert!(!cache.join("staged").exists(), "staging is cleared");
+
+        fs::remove_file(root.join("a/d.png")).unwrap();
+        write_journal();
+        recover(&root, &cache).unwrap();
+        assert!(!root.join("a/d.png").exists());
+        assert_eq!(
+            read_unrecovered(&cache).len(),
+            1,
+            "no staged bytes: reported"
+        );
+        assert!(!Journal::path(&cache).exists());
+    }
+
+    #[test]
+    fn a_source_file_changed_after_planning_is_a_conflict() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("src.bin");
+        fs::write(&source, b"one").unwrap();
+        let err = stage(
+            dir.path(),
+            BTreeMap::from([(version_of(b"two"), Blob::File(source))]),
+        )
+        .unwrap_err();
+        assert_eq!(err.kind, crate::ErrorKind::Conflict);
+        assert_eq!(
+            version_of_file(&dir.path().join("src.bin")).unwrap(),
+            (version_of(b"one"), 3),
+            "streamed hash equals the one-shot hash"
+        );
     }
 }

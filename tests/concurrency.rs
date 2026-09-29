@@ -241,4 +241,31 @@ mod crash {
         assert!(!wiki.root.join("new.md").exists());
         assert_eq!(wiki.json(&["get-page", "new"])["result"]["content"], "hi\n");
     }
+
+    /// The bytes of a crashed `add_attachment` wait in the staging dir, so
+    /// the next open can still write them.
+    #[test]
+    fn a_crashed_binary_create_is_finished_from_staged_bytes() {
+        let (dir, wiki) = temp_wiki();
+        assert!(wiki.run(&["create-page", "--path", "p"]).status.success());
+        let source = dir.path().join("photo.jpg");
+        let bytes: Vec<u8> = (0..=255).cycle().take(200_000).collect();
+        std::fs::write(&source, &bytes).unwrap();
+        let source = source.display().to_string();
+        crash_after(
+            &wiki,
+            0,
+            &["add-attachment", "p", "photo.jpg", "--local-path", &source],
+        );
+        assert!(!wiki.root.join("p/photo.jpg").exists());
+        std::fs::remove_file(&source).unwrap();
+
+        let listed = wiki.json(&["list-attachments", "--page", "p"]);
+        assert_eq!(listed["result"]["attachments"][0]["path"], "p/photo.jpg");
+        assert_eq!(std::fs::read(wiki.root.join("p/photo.jpg")).unwrap(), bytes);
+        assert!(
+            find_file(&wiki.cache, "staged").is_none(),
+            "staging cleared"
+        );
+    }
 }

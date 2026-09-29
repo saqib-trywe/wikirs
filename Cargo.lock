@@ -1250,6 +1250,7 @@ dependencies = [
 name = "wikirs-core"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "blake3",
  "clap",
  "dirs",

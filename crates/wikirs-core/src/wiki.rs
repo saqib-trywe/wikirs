@@ -18,6 +18,8 @@ pub struct Wiki {
     cache_dir: PathBuf,
     machine_file: PathBuf,
     index: Arc<Mutex<Index>>,
+    /// The adapter can read and write local paths (interfaces.md#capabilities).
+    local_fs: bool,
 }
 
 impl Wiki {
@@ -56,7 +58,22 @@ impl Wiki {
             cache_dir,
             machine_file,
             index: Arc::new(Mutex::new(index)),
+            local_fs: true,
         })
+    }
+
+    /// This handle for an adapter without local file access (HTTP): inputs
+    /// naming a `local_path` are refused with `InvalidInput`.
+    #[must_use]
+    pub fn without_local_fs(mut self) -> Self {
+        self.local_fs = false;
+        self
+    }
+
+    /// Whether `local_path` inputs are allowed.
+    #[must_use]
+    pub fn local_fs(&self) -> bool {
+        self.local_fs
     }
 
     /// Both settings files, as they are now.
@@ -274,29 +291,36 @@ pub(crate) fn expand_home(path: &str) -> PathBuf {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PagePath(String);
 
-impl PagePath {
-    pub fn parse(raw: &str) -> Result<Self> {
-        let bad = |reason| Err(Error::invalid_path(raw, reason));
-        if raw.is_empty() {
-            return bad("empty");
-        }
-        if raw.contains('\\') || raw.contains('\0') {
+/// Checks a path from the Wiki root: `/`-separated, no empty, `.`, `..` or
+/// hidden segments, and no `.md` extension (`md_reason` says why).
+fn check_rel_path(raw: &str, md_reason: &'static str) -> Result<()> {
+    let bad = |reason| Err(Error::invalid_path(raw, reason));
+    if raw.is_empty() {
+        return bad("empty");
+    }
+    if raw.contains('\\') || raw.contains('\0') {
+        return bad("malformed");
+    }
+    if std::path::Path::new(raw)
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
+    {
+        return bad(md_reason);
+    }
+    for segment in raw.split('/') {
+        if segment.is_empty() || segment == "." || segment == ".." {
             return bad("malformed");
         }
-        if std::path::Path::new(raw)
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
-        {
-            return bad("page paths have no .md extension");
+        if segment.starts_with('.') {
+            return bad("hidden segment");
         }
-        for segment in raw.split('/') {
-            if segment.is_empty() || segment == "." || segment == ".." {
-                return bad("malformed");
-            }
-            if segment.starts_with('.') {
-                return bad("hidden segment");
-            }
-        }
+    }
+    Ok(())
+}
+
+impl PagePath {
+    pub fn parse(raw: &str) -> Result<Self> {
+        check_rel_path(raw, "page paths have no .md extension")?;
         Ok(Self(raw.to_string()))
     }
 
@@ -312,15 +336,41 @@ impl PagePath {
     }
 }
 
+/// An Attachment's path from the Wiki root, extension included (if any).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AttachmentPath(String);
+
+impl AttachmentPath {
+    pub fn parse(raw: &str) -> Result<Self> {
+        check_rel_path(raw, "a .md file is a Page, not an Attachment")?;
+        Ok(Self(raw.to_string()))
+    }
+
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 /// Rejects a new path whose file or any folder differs from an existing entry
 /// only by case (Page identity decision, item 10).
 pub fn check_case_conflict(wiki: &Wiki, page: &PagePath) -> Result<()> {
-    let segments: Vec<&str> = page.as_str().split('/').collect();
+    case_conflict(wiki, page.as_str(), true)
+}
+
+/// [`check_case_conflict`] for an Attachment's exact file name.
+pub fn check_attachment_case(wiki: &Wiki, path: &AttachmentPath) -> Result<()> {
+    case_conflict(wiki, path.as_str(), false)
+}
+
+/// For a Page, the last segment is compared as both `name.md` and folder `name`.
+fn case_conflict(wiki: &Wiki, rel: &str, page: bool) -> Result<()> {
+    let segments: Vec<&str> = rel.split('/').collect();
     let mut dir = wiki.root().to_path_buf();
     let mut prefix = String::new();
     for (i, segment) in segments.iter().enumerate() {
         let last = i + 1 == segments.len();
-        let wanted: Vec<String> = if last {
+        let wanted: Vec<String> = if last && page {
             vec![format!("{segment}.md"), (*segment).to_string()]
         } else {
             vec![(*segment).to_string()]
@@ -330,8 +380,12 @@ pub fn check_case_conflict(wiki: &Wiki, page: &PagePath) -> Result<()> {
                 let name = entry.file_name().to_string_lossy().to_string();
                 for want in &wanted {
                     if name != *want && name.to_lowercase() == want.to_lowercase() {
-                        let existing = format!("{prefix}{}", name.trim_end_matches(".md"));
-                        return Err(Error::case_conflict(page.as_str(), &existing));
+                        let shown = if page {
+                            name.trim_end_matches(".md")
+                        } else {
+                            &name
+                        };
+                        return Err(Error::case_conflict(rel, &format!("{prefix}{shown}")));
                     }
                 }
             }
