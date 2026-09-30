@@ -84,7 +84,8 @@ The body's `kind` is authoritative. The status is:
 
 - **Operation errors, including invalid arguments**: a tool result with `isError: true`. The content is a text message, and `structuredContent` is the error object, so the model can see what went wrong and correct itself.
 - **Unknown tool**: JSON-RPC error `-32602`.
-- **Resources**: `not_found` → JSON-RPC `-32002` (resource not found). Any other kind → `-32603` with the error object in `data`.
+- **Resources**: `not_found` → JSON-RPC `-32002` (resource not found), which rmcp reports as `-32602` to 2026-07-28 peers (SEP-2164). Any other kind → `-32603`. Both carry the error object (`{ kind, message, details }`) in `data`. A URI that isn't a `wiki://` Page or Attachment is `not_found`.
+- **Read-only** (`mcp --read-only`): a mutation is an unknown tool (`-32602`).
 
 ## GUI and TUI
 

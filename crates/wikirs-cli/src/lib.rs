@@ -31,7 +31,11 @@ pub enum Top {
     #[command(flatten)]
     Op(wikirs_core::Command),
     /// Serve the Wiki over MCP on stdio.
-    Mcp,
+    Mcp {
+        /// List only queries and `rebuild_index` as tools; resources stay available.
+        #[arg(long)]
+        read_only: bool,
+    },
     /// Print the Operation catalogue as JSON (dev tool).
     Catalogue,
 }

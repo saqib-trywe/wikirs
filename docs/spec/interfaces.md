@@ -64,7 +64,10 @@ Binding, auth, Origin/Host checks and read-only mode are in [http-security.md](h
   | listing | `list_resources`, paginated | `list_pages` + `list_attachments` |
 
   Tag listings are not resources; `tag_tree` covers them.
-- **`watch`** isn't a tool. Its MCP form is resource-updated notifications (`subscriptions/listen`), which are driven by `watch`.
+- **`watch`** isn't a tool. Its MCP form is resource notifications driven by `watch`:
+  - 2026-07-28 clients open `subscriptions/listen`. The server accepts `resourcesListChanged` and any `wiki://` Page or Attachment URIs among the requested `resourceSubscriptions`.
+  - Legacy clients (the `initialize` handshake) use `resources/subscribe` / `unsubscribe`, and get `list_changed` from the start.
+  - A resource gets `resources/updated` when its file changes, including both paths of a move. `resources/list_changed` is sent once per batch that created, deleted or moved something, and never for edits alone.
 
 ## GUI and TUI
 

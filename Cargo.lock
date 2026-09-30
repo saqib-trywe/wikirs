@@ -1361,6 +1361,7 @@ dependencies = [
 name = "wikirs"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "clap",
  "insta",
  "rmcp",
@@ -1408,8 +1409,10 @@ name = "wikirs-mcp"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "percent-encoding",
  "rmcp",
  "serde_json",
+ "tempfile",
  "tokio",
  "wikirs-core",
 ]

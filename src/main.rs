@@ -40,16 +40,16 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         // MCP clients start us with an unpredictable cwd: never walk up (wiki-selection.md).
-        Top::Mcp => match open_wiki(cli.wiki.as_deref(), Discovery::Mcp) {
+        Top::Mcp { read_only } => match open_wiki(cli.wiki.as_deref(), Discovery::Mcp) {
             Err(err) => print_outcome(&Err(err), cli.json),
-            Ok(wiki) => run_mcp(wiki),
+            Ok(wiki) => run_mcp(wiki, read_only),
         },
     }
 }
 
 #[cfg(feature = "mcp")]
-fn run_mcp(wiki: Wiki) -> ExitCode {
-    match wikirs_mcp::run_stdio(wiki) {
+fn run_mcp(wiki: Wiki, read_only: bool) -> ExitCode {
+    match wikirs_mcp::run_stdio(wiki, read_only) {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
             eprintln!("error[io]: {err}");
@@ -59,7 +59,7 @@ fn run_mcp(wiki: Wiki) -> ExitCode {
 }
 
 #[cfg(not(feature = "mcp"))]
-fn run_mcp(_wiki: Wiki) -> ExitCode {
+fn run_mcp(_wiki: Wiki, _read_only: bool) -> ExitCode {
     eprintln!("error: `mcp` is not built into this binary (rebuild with the `mcp` feature)");
     ExitCode::from(2)
 }
