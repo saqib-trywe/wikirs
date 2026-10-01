@@ -21,6 +21,8 @@ const LOCK_TIMEOUT: Duration = Duration::from_secs(5);
 pub struct Wiki {
     root: PathBuf,
     cache_dir: PathBuf,
+    /// Per-Wiki state outside the Wiki: the `serve` token.
+    state_dir: PathBuf,
     machine_file: PathBuf,
     index: Arc<Mutex<Index>>,
     /// The adapter can read and write local paths (interfaces.md#capabilities).
@@ -35,18 +37,28 @@ impl Wiki {
     /// Opens the Wiki at `root`, finishing any Plan a crashed process left in
     /// its journal (process-model.md).
     pub fn open(root: impl AsRef<Path>) -> Result<Self> {
-        Self::open_in(root.as_ref(), &cache_base(), &config_base())
+        Self::open_in(root.as_ref(), &cache_base(), &config_base(), &state_base())
     }
 
     /// Like [`Wiki::open`], with everything per machine under `base` instead of
     /// the user's dirs: cache dirs in `base/<wiki key>/`, machine settings in
-    /// `base/config/` (tests and embedders).
+    /// `base/config/`, state in `base/state/` (tests and embedders).
     pub fn open_isolated(root: impl AsRef<Path>, base: impl AsRef<Path>) -> Result<Self> {
         let base = base.as_ref();
-        Self::open_in(root.as_ref(), base, &base.join("config"))
+        Self::open_in(
+            root.as_ref(),
+            base,
+            &base.join("config"),
+            &base.join("state"),
+        )
     }
 
-    fn open_in(given: &Path, cache_base: &Path, config_base: &Path) -> Result<Self> {
+    fn open_in(
+        given: &Path,
+        cache_base: &Path,
+        config_base: &Path,
+        state_base: &Path,
+    ) -> Result<Self> {
         let root = given
             .canonicalize()
             .ok()
@@ -65,6 +77,7 @@ impl Wiki {
         Ok(Self {
             root,
             cache_dir,
+            state_dir: state_base.join(&key),
             machine_file,
             index: Arc::new(Mutex::new(index)),
             local_fs: true,
@@ -149,6 +162,12 @@ impl Wiki {
         &self.cache_dir
     }
 
+    /// Per-Wiki state dir, outside the Wiki and the cache: `<state dir>/wikirs/<wiki key>/`.
+    #[must_use]
+    pub fn state_dir(&self) -> &Path {
+        &self.state_dir
+    }
+
     /// Takes the Wiki-wide advisory write lock, waiting up to [`LOCK_TIMEOUT`]
     /// for other wikirs processes. Released when the guard drops.
     pub fn lock_writes(&self) -> Result<WriteLock> {
@@ -207,6 +226,19 @@ fn cache_base() -> PathBuf {
         .map(PathBuf::from)
         .or_else(|| dirs::cache_dir().map(|d| d.join("wikirs")))
         .unwrap_or_else(|| std::env::temp_dir().join("wikirs-cache"))
+}
+
+/// `<state dir>/wikirs` (`~/.local/state`, or Application Support on macOS),
+/// or `WIKIRS_STATE_DIR` (tests and CI).
+fn state_base() -> PathBuf {
+    std::env::var_os("WIKIRS_STATE_DIR")
+        .map(PathBuf::from)
+        .or_else(|| {
+            dirs::state_dir()
+                .or_else(dirs::data_local_dir)
+                .map(|d| d.join("wikirs"))
+        })
+        .unwrap_or_else(|| std::env::temp_dir().join("wikirs-state"))
 }
 
 /// 16 hex chars of blake3(canonical root path).

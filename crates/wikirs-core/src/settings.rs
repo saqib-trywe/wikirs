@@ -377,11 +377,42 @@ impl Settings {
         self.get("watcher") == "poll"
     }
 
+    /// The `[serve]` settings.
+    #[must_use]
+    pub fn serve(&self) -> ServeSettings {
+        let num = |name| self.get(name).as_u64();
+        ServeSettings {
+            bind: self.get("serve.bind").as_str().map(str::to_string),
+            port: num("serve.port")
+                .and_then(|p| u16::try_from(p).ok())
+                .unwrap_or(4747),
+            require_token: self.get("serve.require_token") == true,
+            allowed_hosts: strings(&self.get("serve.allowed_hosts")),
+            cors_origins: strings(&self.get("serve.cors_origins")),
+            read_only: self.get("serve.read_only") == true,
+            max_body: num("serve.max_body")
+                .and_then(|b| usize::try_from(b).ok())
+                .unwrap_or(32 << 20),
+        }
+    }
+
     /// The per-Wiki cache dir override, if set.
     #[must_use]
     pub fn cache_dir(&self) -> Option<PathBuf> {
         self.get("cache_dir").as_str().map(crate::wiki::expand_home)
     }
+}
+
+/// `serve`'s settings (http-security.md#settings); flags override them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServeSettings {
+    pub bind: Option<String>,
+    pub port: u16,
+    pub require_token: bool,
+    pub allowed_hosts: Vec<String>,
+    pub cors_origins: Vec<String>,
+    pub read_only: bool,
+    pub max_body: usize,
 }
 
 /// Checks a `set_config` request: the key exists (`Err(None)`: not found),

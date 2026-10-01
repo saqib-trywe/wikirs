@@ -1,6 +1,6 @@
 //! The parity test (docs/spec/interfaces.md#parity-test):
 //! 1. coverage: every registry Operation is exposed by every adapter;
-//! 2. behaviour: one scenario gives identical JSON through core, CLI and MCP;
+//! 2. behaviour: one scenario gives identical JSON through core, CLI, MCP and HTTP;
 //! 3. contract snapshot: the catalogue JSON.
 
 use std::process::Command;
@@ -60,6 +60,60 @@ async fn mcp_exposes_every_operation_as_a_tool() {
         registry_names(|k| k != Kind::Subscription),
         "MCP tools differ from the registry"
     );
+}
+
+/// One HTTP request through the router (no socket), as status and JSON body.
+async fn http(
+    router: &axum::Router,
+    method: &str,
+    uri: &str,
+    body: Option<&Value>,
+) -> (u16, Value) {
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+    let mut request = axum::http::Request::builder()
+        .method(method)
+        .uri(uri)
+        .header("host", "localhost");
+    if body.is_some() {
+        request = request.header("content-type", "application/json");
+    }
+    let body = body.map_or_else(String::new, Value::to_string);
+    let response = router
+        .clone()
+        .oneshot(request.body(axum::body::Body::from(body)).unwrap())
+        .await
+        .unwrap();
+    let status = response.status().as_u16();
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+    )
+}
+
+#[tokio::test]
+async fn http_lists_every_operation() {
+    let (_dir, wiki) = temp_wiki();
+    for read_only in [false, true] {
+        let mut policy = wikirs_http::Policy::loopback(0);
+        policy.read_only = read_only;
+        let router = wikirs_http::router(&wiki, policy);
+        let (status, catalogue) = http(&router, "GET", "/ops", None).await;
+        assert_eq!(status, 200);
+        let mut names: Vec<String> = catalogue["operations"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|op| op["name"].as_str().unwrap().to_string())
+            .collect();
+        names.sort();
+        assert_eq!(
+            names,
+            registry_names(|k| !read_only || k != Kind::Mutation),
+            "GET /ops differs from the registry (read_only: {read_only})"
+        );
+    }
 }
 
 // ---------------------------------------------------------------- behaviour
@@ -620,6 +674,18 @@ async fn via_mcp(steps: &[Step]) -> Vec<Value> {
     out
 }
 
+async fn via_http(steps: &[Step]) -> Vec<Value> {
+    let (dir, wiki) = temp_wiki();
+    let scrub = Scrub::of(&dir, &wiki);
+    let router = wikirs_http::router(&wiki, wikirs_http::Policy::loopback(0));
+    let mut out = Vec::new();
+    for s in steps {
+        let (_, body) = http(&router, "POST", &format!("/ops/{}", s.op), Some(&s.input)).await;
+        out.push(scrub.apply(body));
+    }
+    out
+}
+
 async fn mcp_client(wiki: Wiki) -> rmcp::service::RunningService<rmcp::RoleClient, ()> {
     let (server_io, client_io) = tokio::io::duplex(64 * 1024);
     tokio::spawn(async move {
@@ -637,6 +703,7 @@ async fn every_interface_behaves_identically() {
     let steps = scenario();
     let core: Vec<Value> = via_core(&steps).into_iter().map(normalize).collect();
     let mcp: Vec<Value> = via_mcp(&steps).await.into_iter().map(normalize).collect();
+    let http: Vec<Value> = via_http(&steps).await.into_iter().map(normalize).collect();
     let cli: Vec<Value> = tokio::task::spawn_blocking(move || via_cli(&scenario()))
         .await
         .unwrap()
@@ -654,6 +721,20 @@ async fn every_interface_behaves_identically() {
             "step {i} ({}): MCP differs from core",
             step.op
         );
+        // HTTP has no local file access (capability `local_fs: false`).
+        if step.input.to_string().contains("local_path") {
+            assert_eq!(
+                http[i]["error"]["kind"], "invalid_input",
+                "step {i} ({}): HTTP must refuse local paths",
+                step.op
+            );
+        } else {
+            assert_eq!(
+                http[i], core[i],
+                "step {i} ({}): HTTP differs from core",
+                step.op
+            );
+        }
     }
     check_scenario(&steps, &core);
 }

@@ -36,15 +36,41 @@ pub enum Top {
         #[arg(long)]
         read_only: bool,
     },
+    /// Serve the Wiki over HTTP (`/ops`) and MCP Streamable HTTP (`/mcp`).
+    Serve(ServeArgs),
     /// Print the Operation catalogue as JSON (dev tool).
     Catalogue,
+}
+
+/// `wikirs serve`: each flag overrides its `[serve]` machine setting.
+#[derive(Debug, clap::Args)]
+#[allow(clippy::struct_excessive_bools)] // independent CLI flags
+pub struct ServeArgs {
+    /// Address to listen on (default: `127.0.0.1` and `[::1]`).
+    #[arg(long)]
+    pub bind: Option<String>,
+    /// Port (default 4747; 0 picks a free one).
+    #[arg(long)]
+    pub port: Option<u16>,
+    /// Allow a non-loopback --bind. Token auth is then always on.
+    #[arg(long)]
+    pub allow_remote: bool,
+    /// No mutations over HTTP or MCP.
+    #[arg(long)]
+    pub read_only: bool,
+    /// Print this Wiki's token (generating it if needed) and exit.
+    #[arg(long, conflicts_with = "rotate_token")]
+    pub print_token: bool,
+    /// Replace this Wiki's token, print the new one, and exit.
+    #[arg(long)]
+    pub rotate_token: bool,
 }
 
 /// Subcommand names the CLI exposes for Operations (the parity test compares
 /// these with the registry).
 #[must_use]
 pub fn operation_subcommands() -> Vec<String> {
-    let ours = ["mcp", "catalogue", "help"];
+    let ours = ["mcp", "serve", "catalogue", "help"];
     Cli::command()
         .get_subcommands()
         .map(|c| c.get_name().to_string())

@@ -44,8 +44,8 @@ pub struct WikiServer {
     wiki: Arc<Wiki>,
     /// `--read-only`: the adapter capability `mutations: false`.
     read_only: bool,
-    /// URIs a legacy client subscribed to with `resources/subscribe`. One
-    /// server serves one session (stdio); `/mcp` will need one per session.
+    /// URIs a legacy client subscribed to with `resources/subscribe`: one
+    /// set per session (see [`WikiServer::session`]).
     subscribed: Arc<Mutex<HashSet<String>>>,
 }
 
@@ -64,6 +64,16 @@ impl WikiServer {
     pub fn read_only(mut self) -> Self {
         self.read_only = true;
         self
+    }
+
+    /// A server for one more session (Streamable HTTP): same Wiki and
+    /// policy, its own subscriptions.
+    #[must_use]
+    pub fn session(&self) -> Self {
+        Self {
+            subscribed: Arc::default(),
+            ..self.clone()
+        }
     }
 
     /// Whether `op` is one of this server's tools.

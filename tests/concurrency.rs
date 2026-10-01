@@ -282,9 +282,9 @@ fn a_watching_process_hears_every_other_writer_once() {
     };
 
     let (_dir, wiki) = temp_wiki();
-    let mut child = wiki.cmd(&["watch"]).stdout(Stdio::piped()).spawn().unwrap();
+    let mut child = Reaped(wiki.cmd(&["watch"]).stdout(Stdio::piped()).spawn().unwrap());
     let (tx, rx) = mpsc::channel::<Value>();
-    let stdout = child.stdout.take().unwrap();
+    let stdout = child.0.stdout.take().unwrap();
     std::thread::spawn(move || {
         for line in BufReader::new(stdout).lines() {
             let Ok(line) = line else { break };
@@ -321,7 +321,7 @@ fn a_watching_process_hears_every_other_writer_once() {
         assert!(
             started.elapsed() < Duration::from_secs(10),
             "the watcher never started: {:?}",
-            child.try_wait()
+            child.0.try_wait()
         );
     }
     while rx.recv_timeout(Duration::from_millis(600)).is_ok() {}
@@ -342,7 +342,15 @@ fn a_watching_process_hears_every_other_writer_once() {
         ["page_created theirs", "index_updated "],
         "another wikirs process's Plan, heard once despite the shared Index"
     );
+}
 
-    child.kill().unwrap();
-    child.wait().unwrap();
+/// A child process that's killed when this drops, so a failing assertion
+/// can't leave it running (holding the test runner's output pipes open).
+struct Reaped(std::process::Child);
+
+impl Drop for Reaped {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
 }

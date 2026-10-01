@@ -44,8 +44,12 @@ A `local_path` input (`add_attachment.source`, `read_attachment.as`) to an adapt
 |---|---|
 | `POST /ops/{name}` | JSON Input → JSON Output (queries, mutations and maintenance) |
 | `GET /ops` | the catalogue |
-| `GET /ops/watch?scope=…` | `watch` as Server-Sent Events |
+| `GET /ops/watch?space=…&path_prefix=…` | `watch` as Server-Sent Events: one `data:` line per event, the event as JSON (the Scope fields as query parameters) |
 | `/mcp` | MCP Streamable HTTP, mounted on the same router |
+
+- An empty body is the input `{}`. `POST /ops/watch` is an Operation call like any other, and fails with `invalid_input` as `watch` does on every Interface.
+- HTTP calls run without `local_fs`, so `local_path` inputs are `invalid_input` (the parity test expects that).
+- `/mcp` gives each session its own server: its own legacy `resources/subscribe` set.
 
 Binding, auth, Origin/Host checks and read-only mode are in [http-security.md](http-security.md).
 
