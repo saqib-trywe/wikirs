@@ -1,0 +1,35 @@
+---
+source: crates/wikirs-tui/tests/tui.rs
+assertion_line: 151
+expression: fx.frame()
+---
+ wikirs   Engineering / Rust / Async notes
+┌ Pages ───────────────────┐┌ Async notes ───────────────────────────────────────────┐┌────────────────────────────────┐
+│Engineering               ││Async notes                                             ││BACKLINKS                       │
+│  Rust                    ││                                                        ││  Rust                          │
+│    Async notes           ││See [1]eng/rust#Pinning and [2][image:                  ││  Inbox                         │
+│Inbox                     ││eng/rust/async/diagram.png].                            ││                                │
+│                          ││                                                        ││LINKS                           │
+│                          ││┌───┬─────┐                                             ││  [1] eng/rust                  │
+│                          │││ a │   b │                                             ││  [2] ✗ eng/rust/async/diagram.p│
+│                          ││├───┼─────┤                                             ││                                │
+│                          │││ 1 │ two │                                             ││OUTLINE                         │
+│                          ││└───┴─────┘                                             ││  Async notes                   │
+│                          ││                                                        ││                                │
+│                          ││┃ NOTE                                                  ││TAGS                            │
+│                          ││┃ Careful with Pin.                                     ││  #lang/rust/async              │
+│                          ││                                                        ││                                │
+│                          ││• [x] done                                              ││                                │
+│                          ││• [ ] todo                                              ││                                │
+│                          ││                                                        ││                                │
+│                          ││                                                        ││                                │
+│                          ││                                                        ││                                │
+│                          ││                                                        ││                                │
+│                          ││                                                        ││                                │
+│                          ││                                                        ││                                │
+│                          ││                                                        ││                                │
+│                          ││                                                        ││                                │
+│                          ││                                                        ││                                │
+│                          ││                                                        ││                                │
+└──────────────────────────┘└────────────────────────────────────────────────────────┘└────────────────────────────────┘
+ j/k move  Tab links  1-9 follow  o open  / search  b backlinks  e edit  E $EDITOR  R move  : cmd  ^k ops  q quit

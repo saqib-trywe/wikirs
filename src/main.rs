@@ -56,6 +56,10 @@ fn main() -> ExitCode {
             Err(err) => print_error(&err, json),
             Ok(wiki) => run_serve(&wiki, &args),
         },
+        Top::Tui { page } => match open_wiki(flag, Discovery::Cli) {
+            Err(err) => print_error(&err, json),
+            Ok(wiki) => run_tui(wiki, page.as_deref()),
+        },
         // MCP clients start us with an unpredictable cwd: never walk up (wiki-selection.md).
         Top::Mcp { read_only } => match open_wiki(flag, Discovery::Mcp) {
             Err(err) => print_error(&err, json),
@@ -78,6 +82,23 @@ fn run_mcp(wiki: Wiki, read_only: bool) -> ExitCode {
 #[cfg(not(feature = "mcp"))]
 fn run_mcp(_wiki: Wiki, _read_only: bool) -> ExitCode {
     eprintln!("error: `mcp` is not built into this binary (rebuild with the `mcp` feature)");
+    ExitCode::from(2)
+}
+
+#[cfg(feature = "tui")]
+fn run_tui(wiki: Wiki, page: Option<&str>) -> ExitCode {
+    match wikirs_tui::run(wiki, page) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(err) => {
+            eprintln!("error[io]: {err}");
+            ExitCode::from(1)
+        }
+    }
+}
+
+#[cfg(not(feature = "tui"))]
+fn run_tui(_wiki: Wiki, _page: Option<&str>) -> ExitCode {
+    eprintln!("error: `tui` is not built into this binary (rebuild with the `tui` feature)");
     ExitCode::from(2)
 }
 

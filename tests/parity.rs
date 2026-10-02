@@ -1,5 +1,6 @@
 //! The parity test (docs/spec/interfaces.md#parity-test):
-//! 1. coverage: every registry Operation is exposed by every adapter;
+//! 1. coverage: every registry Operation is exposed by every adapter (the TUI's
+//!    palette included, each with a form);
 //! 2. behaviour: one scenario gives identical JSON through core, CLI, MCP and HTTP;
 //! 3. contract snapshot: the catalogue JSON.
 
@@ -41,6 +42,23 @@ fn cli_exposes_every_operation() {
         registry_names(|_| true),
         "CLI subcommands differ from the registry"
     );
+}
+
+#[test]
+fn tui_palette_lists_every_operation_with_a_form() {
+    let mut palette = wikirs_tui::palette_entries();
+    palette.sort();
+    assert_eq!(
+        palette,
+        registry_names(|_| true),
+        "TUI palette entries differ from the registry"
+    );
+    // The form renderer supports every Input's schema (interfaces.md#parity-test).
+    for name in &palette {
+        if let Err(err) = wikirs_forms::Form::for_op(name).expect("in the registry") {
+            panic!("TUI palette: {err}");
+        }
+    }
 }
 
 #[tokio::test]

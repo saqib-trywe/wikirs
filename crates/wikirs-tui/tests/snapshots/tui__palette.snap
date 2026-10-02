@@ -1,0 +1,35 @@
+---
+source: crates/wikirs-tui/tests/tui.rs
+assertion_line: 168
+expression: fx.frame()
+---
+ wikirs   Engineering / Rust / Async notes
+┌ Pages ───────────────────┐┌ Async notes ───────────────────────────────────────────┐┌────────────────────────────────┐
+│Engineering   ┌ Operations ────────────────────────────────────────────────────────────────────────────┐              │
+│  Rust        │move█                                                                                   │              │
+│    Async note└────────────────────────────────────────────────────────────────────────────────────────┘              │
+│Inbox         ┌────────────────────────────────────────────────────────────────────────────────────────┐              │
+│              │move_page         mutation     Move or rename a Page with its Child Pages and Attachment│              │
+│              │move_attachment   mutation     Move or rename an Attachment, rewriting every Link to it.│              │
+│              │                                                                                        │sync/diagram.p│
+│              │                                                                                        │              │
+│              │                                                                                        │              │
+│              │                                                                                        │              │
+│              │                                                                                        │              │
+│              │                                                                                        │              │
+│              │                                                                                        │              │
+│              │                                                                                        │              │
+│              │                                                                                        │              │
+│              │                                                                                        │              │
+│              │                                                                                        │              │
+│              │                                                                                        │              │
+│              │                                                                                        │              │
+│              │                                                                                        │              │
+│              │                                                                                        │              │
+│              │                                                                                        │              │
+│              │                                                                                        │              │
+│              └────────────────────────────────────────────────────────────────────────────────────────┘              │
+│                          ││                                                        ││                                │
+│                          ││                                                        ││                                │
+└──────────────────────────┘└────────────────────────────────────────────────────────┘└────────────────────────────────┘
+ j/k move  Tab links  1-9 follow  o open  / search  b backlinks  e edit  E $EDITOR  R move  : cmd  ^k ops  q quit

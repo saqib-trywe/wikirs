@@ -1,0 +1,35 @@
+---
+source: crates/wikirs-tui/tests/tui.rs
+assertion_line: 187
+expression: fx.frame()
+---
+ wikirs   Engineering
+┌ Pages ───────────────────┐┌ Engineering ───────────────────────────────────────────┐┌────────────────────────────────┐
+│Engineering               ││Engineering                                             ││BACKLINKS                       │
+│  Rust                    ││                                                        ││  none                          │
+│    Async notes           ││Start at [1]eng/rust.                                   ││                                │
+│Inbox                     ││                                                        ││LINKS                           │
+│                          ││                                                        ││  [1] eng/rust                  │
+│                          ││                                                        ││                                │
+│                          ││                                                        ││OUTLINE                         │
+│                          ││                                                        ││  Engineering                   │
+│                          ││                                                        ││                                │
+│                          ││                                                        ││TAGS                            │
+│                          ││                                                        ││                                │
+│                          ││                                                        ││                                │
+│                          ││                                                        ││                                │
+│                          ││                                                        ││                                │
+│                          ││                                                        ││                                │
+│                          ││                                                        ││                                │
+│                          ││                                                        ││                                │
+│                          ││                                                        ││                                │
+│                          ││                                                        ││                                │
+│                          ││                                                        ││                                │
+│                          ││                                                        ││                                │
+│                          ││                                                        ││                                │
+│                          ││                                                        ││                                │
+│                          ││                                                        ││                                │
+│                          ││                                                        ││                                │
+│                          ││                                                        ││                                │
+└──────────────────────────┘└────────────────────────────────────────────────────────┘└────────────────────────────────┘
+:move_█   move_page  move_attachment

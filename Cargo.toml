@@ -13,6 +13,7 @@ wikirs-forms = { path = "crates/wikirs-forms" }
 wikirs-cli = { path = "crates/wikirs-cli" }
 wikirs-mcp = { path = "crates/wikirs-mcp" }
 wikirs-http = { path = "crates/wikirs-http" }
+wikirs-tui = { path = "crates/wikirs-tui" }
 anyhow = "1"
 clap = { version = "4.6", features = ["derive"] }
 rmcp = { version = "3.5", features = ["server", "transport-io"] }
@@ -41,6 +42,8 @@ http-body-util = "0.1"
 similar = "2.7"
 assert_cmd = "2.2"
 proptest = "1"
+ratatui = "0.30"
+ratatui-textarea = "0.9"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
@@ -57,9 +60,10 @@ version.workspace = true
 publish.workspace = true
 
 [features]
-default = ["mcp", "http"]
+default = ["mcp", "http", "tui"]
 mcp = ["dep:wikirs-mcp"]
 http = ["mcp", "dep:wikirs-http"]
+tui = ["dep:wikirs-tui"]
 # Fault injection for tests (testing.md). Never enabled in release builds.
 test-hooks = ["wikirs-core/test-hooks"]
 
@@ -68,6 +72,7 @@ wikirs-core.workspace = true
 wikirs-cli.workspace = true
 wikirs-mcp = { workspace = true, optional = true }
 wikirs-http = { workspace = true, optional = true }
+wikirs-tui = { workspace = true, optional = true }
 clap.workspace = true
 serde_json.workspace = true
 
@@ -80,6 +85,8 @@ rmcp = { workspace = true, features = ["client"] }
 base64.workspace = true
 tokio.workspace = true
 wikirs-http.workspace = true
+wikirs-tui.workspace = true
+wikirs-forms.workspace = true
 tower.workspace = true
 http-body-util.workspace = true
 axum.workspace = true

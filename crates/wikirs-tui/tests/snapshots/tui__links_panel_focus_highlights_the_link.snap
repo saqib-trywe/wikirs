@@ -1,0 +1,35 @@
+---
+source: crates/wikirs-tui/tests/tui.rs
+assertion_line: 160
+expression: fx.frame()
+---
+ wikirs   Engineering / Rust
+┌ Pages ───────────────────┐┌ Rust ──────────────────────────────────────────────────┐┌────────────────────────────────┐
+│Engineering               ││Rust                                                    ││BACKLINKS                       │
+│  Rust                    ││                                                        ││  Engineering                   │
+│    Async notes           ││• [1]Async                                              ││  Async notes                   │
+│Inbox                     ││• [2]eng/missing                                        ││                                │
+│                          ││                                                        ││LINKS                           │
+│                          ││filler                                                  ││  [1] eng/rust/async            │
+│                          ││                                                        ││  [2] ✗ eng/missing             │
+│                          ││filler                                                  ││                                │
+│                          ││                                                        ││OUTLINE                         │
+│                          ││filler                                                  ││  Rust                          │
+│                          ││                                                        ││    Pinning                     │
+│                          ││Pinning                                                 ││                                │
+│                          ││                                                        ││TAGS                            │
+│                          ││Pin it. #lang/rust                                      ││  #lang/rust                    │
+│                          ││                                                        ││                                │
+│                          ││                                                        ││                                │
+│                          ││                                                        ││                                │
+│                          ││                                                        ││                                │
+│                          ││                                                        ││                                │
+│                          ││                                                        ││                                │
+│                          ││                                                        ││                                │
+│                          ││                                                        ││                                │
+│                          ││                                                        ││                                │
+│                          ││                                                        ││                                │
+│                          ││                                                        ││                                │
+│                          ││                                                        ││                                │
+└──────────────────────────┘└────────────────────────────────────────────────────────┘└────────────────────────────────┘
+ j/k move  Tab links  1-9 follow  o open  / search  b backlinks  e edit  E $EDITOR  R move  : cmd  ^k ops  q quit

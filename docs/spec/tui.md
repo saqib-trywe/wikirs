@@ -32,6 +32,14 @@ The shape of the TUI Interface. Decided in [TUI layout and editing prototype](..
 - **ctrl-k palette**: every Operation, with a form generated from its Input schema and a dry-run toggle. Results and Plans appear in a popup.
 - These get their own keys, matching the GUI's list ([gui.md](gui.md#custom-ui-beyond-the-palette)): the tree, following Links, Backlinks, quick open and search, create from a Broken Link, and rename/move with its Plan preview. Everything else is reached through `:` or ctrl-k.
 
+## Keys added in the build
+
+The build (`wikirs tui [page]`, crate `wikirs-tui`) adds these to the keys above:
+- `/` full-text search (`search`), next to `o`. `R` opens `move_page` for the open Page as a dry run, and `a` in any dry-run result applies it.
+- Leaving a Page with unsaved edits is refused: ctrl-s saves, `D` discards. `q` asks first when there are unsaved edits, and `Q` quits anyway.
+- `:` also takes `q`, `w` and `wq`. Operation names work with `_` or `-` (`:move_page` or `:move-page`, the CLI's spelling). `:watch` and the palette's `watch` show the events this TUI has seen.
+- A broken `![[file]]` embed reports the missing file and never offers to create a Page.
+
 ## Changed on disk
 
 The banner row reads "CHANGED ON DISK": Reload / Keep mine / Compare (r / m / d from the view; Esc first if editing). Compare shows mine and disk side by side.
