@@ -15,7 +15,7 @@ use crate::{
     Error, Kind, Operation, Result, Wiki,
     index::{AttachmentRow, Scope},
     mutations::{rewrite_links_for, warn_breaking_links},
-    plan::{Blob, Edit, Plan, Warning, mutate, version_of_file},
+    plan::{Blob, Edit, Plan, mutate, version_of_file},
     wiki::{AttachmentPath, PagePath, check_attachment_case, check_case_conflict},
 };
 
@@ -185,10 +185,6 @@ impl Operation for AddAttachment {
             size,
             version,
         })
-    }
-
-    fn warnings(output: &AddAttachmentOutput) -> Vec<Warning> {
-        output.plan.warnings.clone()
     }
 }
 
@@ -412,10 +408,6 @@ impl Operation for MoveAttachment {
             links_rewritten,
         })
     }
-
-    fn warnings(output: &MoveAttachmentOutput) -> Vec<Warning> {
-        output.plan.warnings.clone()
-    }
 }
 
 // --------------------------------------------------------- delete_attachment
@@ -466,10 +458,6 @@ impl Operation for DeleteAttachment {
             plan,
             applied: !input.dry_run,
         })
-    }
-
-    fn warnings(output: &DeleteAttachmentOutput) -> Vec<Warning> {
-        output.plan.warnings.clone()
     }
 }
 

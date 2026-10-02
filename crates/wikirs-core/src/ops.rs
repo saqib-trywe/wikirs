@@ -17,7 +17,7 @@ use crate::{
     links::{LinkStatus, Resolved, normalize_dest, resolve},
     markdown,
     mutations::{DeletePage, MovePage, RenameTag, SetPageMeta, TagPage, UntagPage},
-    plan::{Edit, Plan, Splice, UnrecoveredEdit, Warning, mutate, unrecovered_edits, version_of},
+    plan::{Edit, Plan, Splice, UnrecoveredEdit, mutate, unrecovered_edits, version_of},
     watch::Watch,
     wiki::{PagePath, check_case_conflict, slugify},
 };
@@ -223,10 +223,6 @@ impl Operation for CreatePage {
             applied: !input.dry_run,
         })
     }
-
-    fn warnings(output: &CreatePageOutput) -> Vec<Warning> {
-        output.plan.warnings.clone()
-    }
 }
 
 // ---------------------------------------------------------------- write_page
@@ -294,10 +290,6 @@ impl Operation for WritePage {
             applied: !input.dry_run,
             version,
         })
-    }
-
-    fn warnings(output: &WriteOutput) -> Vec<Warning> {
-        output.plan.warnings.clone()
     }
 }
 
@@ -399,10 +391,6 @@ impl Operation for EditPage {
             applied: !input.dry_run,
             version,
         })
-    }
-
-    fn warnings(output: &WriteOutput) -> Vec<Warning> {
-        output.plan.warnings.clone()
     }
 }
 

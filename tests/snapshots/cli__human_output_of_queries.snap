@@ -1,0 +1,43 @@
+---
+source: tests/cli.rs
+expression: shown
+---
+$ wikirs list-pages
+eng       Engineering  #team
+eng/rust  Rust  #lang
+notes     Notes
+
+$ wikirs children --depth 2
+eng  Engineering
+  eng/rust  Rust
+notes  Notes
+
+$ wikirs get-page eng
+# Engineering
+
+See [[eng/rust]] and [[missing]]. #team
+
+$ wikirs outline eng/rust
+Rust
+  Ownership
+
+$ wikirs links eng
+[[eng/rust]]  → eng/rust  (ok)
+[[missing]]  → missing  (broken)
+
+$ wikirs backlinks eng
+eng/rust  [Engineering](../eng.md)
+
+$ wikirs tag-tree
+#lang  1
+#team  1
+
+$ wikirs check
+eng.md:3:22: broken_link: `missing` does not exist
+
+$ wikirs search borrowing
+eng/rust  Rust
+    --- tags: [lang] --- # Rust ## Ownership **Borrowing**, see [Engineering](../eng.md).
+
+$ wikirs get-config links.syntax
+links.syntax = "standard"  (default)

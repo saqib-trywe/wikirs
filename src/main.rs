@@ -3,8 +3,7 @@
 
 use std::process::ExitCode;
 
-use clap::Parser;
-use wikirs_cli::{Cli, ServeArgs, Top, print_outcome};
+use wikirs_cli::{ConfigCommand, Output, ServeArgs, Top, print_error};
 use wikirs_core::{Command, Discovery, Error, Wiki, config_base, resolve_root};
 
 fn open_wiki(flag: Option<&str>, discovery: Discovery) -> Result<Wiki, Error> {
@@ -20,8 +19,13 @@ fn open_wiki(flag: Option<&str>, discovery: Discovery) -> Result<Wiki, Error> {
 }
 
 fn main() -> ExitCode {
-    let cli = Cli::parse();
-    match cli.command {
+    let invocation = wikirs_cli::parse();
+    let (flag, json) = (invocation.wiki.as_deref(), invocation.json);
+    let command = match invocation.command {
+        Ok(command) => command,
+        Err(err) => return print_error(&err, json),
+    };
+    match command {
         Top::Op(command) => {
             // `init` creates the `.wikirs/` that walking up looks for: it targets the cwd.
             let discovery = if matches!(command, Command::Init(_)) {
@@ -29,9 +33,18 @@ fn main() -> ExitCode {
             } else {
                 Discovery::Cli
             };
-            let wiki = open_wiki(cli.wiki.as_deref(), discovery);
-            wikirs_cli::run_operation(command, wiki, cli.json)
+            let output = Output {
+                json,
+                fail_on_diagnostics: invocation.fail_on_diagnostics,
+            };
+            wikirs_cli::run_operation(command, open_wiki(flag, discovery), output)
         }
+        Top::Config(ConfigCommand::Adopt { from, dry_run }) => wikirs_cli::run_adopt(
+            open_wiki(flag, Discovery::Cli),
+            from.as_deref(),
+            dry_run,
+            json,
+        ),
         Top::Catalogue => {
             println!(
                 "{}",
@@ -39,13 +52,13 @@ fn main() -> ExitCode {
             );
             ExitCode::SUCCESS
         }
-        Top::Serve(args) => match open_wiki(cli.wiki.as_deref(), Discovery::Cli) {
-            Err(err) => print_outcome(&Err(err), cli.json),
+        Top::Serve(args) => match open_wiki(flag, Discovery::Cli) {
+            Err(err) => print_error(&err, json),
             Ok(wiki) => run_serve(&wiki, &args),
         },
         // MCP clients start us with an unpredictable cwd: never walk up (wiki-selection.md).
-        Top::Mcp { read_only } => match open_wiki(cli.wiki.as_deref(), Discovery::Mcp) {
-            Err(err) => print_outcome(&Err(err), cli.json),
+        Top::Mcp { read_only } => match open_wiki(flag, Discovery::Mcp) {
+            Err(err) => print_error(&err, json),
             Ok(wiki) => run_mcp(wiki, read_only),
         },
     }

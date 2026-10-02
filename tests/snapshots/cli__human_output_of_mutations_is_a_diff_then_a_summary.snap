@@ -1,0 +1,50 @@
+---
+source: tests/cli.rs
+expression: shown
+---
+$ wikirs move-page eng/rust eng/rustlang --dry-run
+--- a/eng.md
++++ b/eng.md
+@@ -1,3 +1,3 @@
+ # Engineering
+ 
+-See [[eng/rust]] and [[missing]]. #team
++See [[eng/rustlang]] and [[missing]]. #team
+rename from eng/rust.md
+rename to eng/rustlang.md
+
+$ wikirs move-page eng/rust eng/rustlang
+modified eng.md
+moved eng/rust.md → eng/rustlang.md
+
+$ wikirs tag-page notes todo --dry-run
+--- a/notes.md
++++ b/notes.md
+@@ -1,3 +1,7 @@
++---
++tags:
++  - todo
++---
+ # Notes
+ 
+ Nothing yet.
+
+$ wikirs create-page --title Ideas --content Some ideas. --dry-run
+--- /dev/null
++++ b/ideas.md
+@@ -0,0 +1,3 @@
++# Ideas
++
++Some ideas.
+\ No newline at end of file
+
+$ wikirs delete-page notes --dry-run
+--- a/notes.md
++++ /dev/null
+@@ -1,3 +0,0 @@
+-# Notes
+-
+-Nothing yet.
+
+$ wikirs delete-page notes
+deleted notes.md

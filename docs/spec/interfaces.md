@@ -34,9 +34,11 @@ A `local_path` input (`add_attachment.source`, `read_attachment.as`) to an adapt
 ## CLI
 
 - Input structs derive `clap::Args`, and the subcommand enum is generated.
-- Every subcommand also accepts `--input <json | ->`.
-- Output: `--json` prints the `{ result, warnings }` envelope (or the error object) on stdout. Otherwise a per-type `Render` trait prints it for humans, falling back to pretty JSON. A dry-run Plan renders as a unified diff.
+- Every subcommand also accepts `--input <json | ->`: the whole Input as JSON (`-` reads stdin), in place of the arguments it conflicts with. Its errors are `invalid_input` with `field: "input"`.
+- Output: `--json` prints the `{ result, warnings }` envelope (or the error object) on stdout. Otherwise the CLI renders the result for humans, with one renderer per Output type (picked by the type's schema title) and pretty JSON for the rest. Any result with a Plan renders it as a unified diff on a dry run, and as one line per edit once applied.
+- `check --fail-on-diagnostics` exits 7 if there are any ([errors.md](errors.md#cli)).
 - `watch` prints JSON Lines.
+- `wikirs config adopt [--from <old root>] [--dry-run]` takes over a moved Wiki's machine settings ([wiki-selection.md](wiki-selection.md#machine-settings)). It's CLI-only, not an Operation. In human mode, every Operation subcommand prints a `hint:` pointing at it while there are settings to adopt.
 
 ## HTTP (`wikirs serve`, axum)
 

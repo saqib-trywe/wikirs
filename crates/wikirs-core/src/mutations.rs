@@ -951,6 +951,10 @@ mod tests {
             "every surviving Link to it: {warnings:?}"
         );
         assert_eq!(
+            &out["warnings"], &out["result"]["plan"]["warnings"],
+            "the envelope repeats the Plan's warnings"
+        );
+        assert_eq!(
             call(
                 &wiki,
                 "delete_page",

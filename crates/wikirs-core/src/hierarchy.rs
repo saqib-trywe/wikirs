@@ -11,7 +11,7 @@ use crate::{
     Error, Kind, Operation, Result, Wiki, frontmatter,
     index::{HierarchyRow, page_path},
     mutations::{push_modify, read_existing},
-    plan::{Plan, Tx, Warning, mutate},
+    plan::{Plan, Tx, mutate},
     wiki::PagePath,
 };
 
@@ -380,10 +380,6 @@ impl Operation for ReorderPage {
             applied: !input.dry_run,
             written,
         })
-    }
-
-    fn warnings(output: &ReorderPageOutput) -> Vec<Warning> {
-        output.plan.warnings.clone()
     }
 }
 

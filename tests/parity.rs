@@ -623,7 +623,9 @@ fn via_core(steps: &[Step]) -> Vec<Value> {
         .collect()
 }
 
-fn via_cli(steps: &[Step]) -> Vec<Value> {
+/// Through the binary, with each step's CLI arguments or, with `as_json`, its
+/// JSON Input as `--input`.
+fn via_cli(steps: &[Step], as_json: bool) -> Vec<Value> {
     let (dir, wiki) = temp_wiki();
     let scrub = Scrub::of(&dir, &wiki);
     steps
@@ -636,7 +638,15 @@ fn via_cli(steps: &[Step]) -> Vec<Value> {
                 .arg("--wiki")
                 .arg(dir.path().join("wiki"))
                 .arg("--json")
-                .args(s.cli)
+                .args(if as_json {
+                    vec![
+                        s.op.replace('_', "-"),
+                        "--input".into(),
+                        s.input.to_string(),
+                    ]
+                } else {
+                    s.cli.iter().map(ToString::to_string).collect()
+                })
                 .output()
                 .unwrap();
             scrub.apply(serde_json::from_slice(&out.stdout).unwrap_or_else(|e| {
@@ -704,16 +714,23 @@ async fn every_interface_behaves_identically() {
     let core: Vec<Value> = via_core(&steps).into_iter().map(normalize).collect();
     let mcp: Vec<Value> = via_mcp(&steps).await.into_iter().map(normalize).collect();
     let http: Vec<Value> = via_http(&steps).await.into_iter().map(normalize).collect();
-    let cli: Vec<Value> = tokio::task::spawn_blocking(move || via_cli(&scenario()))
-        .await
-        .unwrap()
-        .into_iter()
-        .map(normalize)
-        .collect();
+    let [cli, cli_input] = [false, true].map(|as_json| {
+        std::thread::spawn(move || via_cli(&scenario(), as_json))
+            .join()
+            .unwrap()
+            .into_iter()
+            .map(normalize)
+            .collect::<Vec<Value>>()
+    });
     for (i, step) in steps.iter().enumerate() {
         assert_eq!(
             cli[i], core[i],
             "step {i} ({}): CLI differs from core",
+            step.op
+        );
+        assert_eq!(
+            cli_input[i], core[i],
+            "step {i} ({}): CLI with --input differs from core",
             step.op
         );
         assert_eq!(

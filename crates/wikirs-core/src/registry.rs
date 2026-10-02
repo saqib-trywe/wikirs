@@ -26,7 +26,8 @@ pub trait Operation {
 
     fn run(wiki: &Wiki, input: Self::Input) -> Result<Self::Output>;
 
-    /// Warnings carried next to the result in the `{ result, warnings }` envelope.
+    /// Warnings carried next to the result in the `{ result, warnings }` envelope,
+    /// besides a Plan's own (which the envelope always repeats).
     fn warnings(_output: &Self::Output) -> Vec<Warning> {
         Vec::new()
     }
@@ -37,8 +38,14 @@ pub trait Operation {
 pub fn run_enveloped<O: Operation>(wiki: &Wiki, input: O::Input) -> Result<Value> {
     let output = catch_unwind(AssertUnwindSafe(|| O::run(wiki, input)))
         .map_err(|_| Error::internal(format!("`{}` panicked", O::NAME)))??;
-    let warnings = O::warnings(&output);
+    let mut warnings = O::warnings(&output);
     let result = serde_json::to_value(&output).map_err(|e| Error::internal(e.to_string()))?;
+    // The envelope repeats a Plan's warnings (errors.md#success-and-warnings).
+    if let Some(planned) = result.get("plan").and_then(|plan| plan.get("warnings")) {
+        let planned: Vec<Warning> =
+            serde_json::from_value(planned.clone()).map_err(|e| Error::internal(e.to_string()))?;
+        warnings.extend(planned);
+    }
     Ok(json!({ "result": result, "warnings": warnings }))
 }
 
@@ -141,6 +148,24 @@ macro_rules! operations {
                 match self {
                     $(Self::$op(input) => $crate::run_enveloped::<$op>(wiki, input)),*
                 }
+            }
+
+            /// The chosen Operation's catalogue name.
+            #[must_use]
+            pub fn name(&self) -> &'static str {
+                match self {
+                    $(Self::$op(_) => <$op as $crate::Operation>::NAME),*
+                }
+            }
+
+            /// The Operation called `name`, with its Input from JSON (CLI `--input`).
+            pub fn from_json(name: &str, input: ::serde_json::Value) -> $crate::Result<Self> {
+                $(if name == <$op as $crate::Operation>::NAME {
+                    return ::serde_json::from_value(input)
+                        .map(Self::$op)
+                        .map_err(|e| $crate::Error::invalid_input(None, e.to_string()));
+                })*
+                Err($crate::Error::invalid_input(None, format!("no Operation `{name}`")))
             }
         }
     };
