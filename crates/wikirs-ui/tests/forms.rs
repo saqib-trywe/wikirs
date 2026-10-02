@@ -2,7 +2,7 @@
 
 use serde_json::{Value, json};
 use wikirs_core::{Kind, Wiki, find, registry};
-use wikirs_forms::{Control, Field, Form, forms};
+use wikirs_ui::{Control, Field, Form, forms};
 
 /// "The form renderer must support every schema shape used by any Input."
 #[test]

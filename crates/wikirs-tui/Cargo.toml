@@ -7,7 +7,7 @@ license.workspace = true
 
 [dependencies]
 wikirs-core = { workspace = true, features = ["clap"] }
-wikirs-forms.workspace = true
+wikirs-ui.workspace = true
 clap.workspace = true
 serde_json.workspace = true
 ratatui.workspace = true

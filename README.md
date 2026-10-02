@@ -89,7 +89,7 @@ cargo clippy --workspace --all-targets --all-features -- -D warnings
 
 The workspace is split into crates:
 - `wikirs-core`: the Wiki, Operations, Index, markdown parser and document model
-- `wikirs-forms`: schema-driven palette forms
+- `wikirs-ui`: what the GUI and TUI share: palette forms, and the open-Page session (saves, conflicts, changes on disk)
 - adapters: `wikirs-cli`, `wikirs-mcp`, `wikirs-http`, `wikirs-tui`
 
 Adapters depend only on the core, never on each other. A parity test checks that every Interface exposes every Operation with identical results. `UPDATE_DOCS=1 cargo test --test docs` regenerates the Operation reference. Testing is described in [testing.md](docs/spec/testing.md), and the crate layout in [workspace.md](docs/spec/workspace.md).

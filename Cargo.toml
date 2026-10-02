@@ -10,7 +10,7 @@ license = "GPL-3.0-or-later"
 
 [workspace.dependencies]
 wikirs-core = { path = "crates/wikirs-core" }
-wikirs-forms = { path = "crates/wikirs-forms" }
+wikirs-ui = { path = "crates/wikirs-ui" }
 wikirs-cli = { path = "crates/wikirs-cli" }
 wikirs-mcp = { path = "crates/wikirs-mcp" }
 wikirs-http = { path = "crates/wikirs-http" }
@@ -88,7 +88,7 @@ base64.workspace = true
 tokio.workspace = true
 wikirs-http.workspace = true
 wikirs-tui.workspace = true
-wikirs-forms.workspace = true
+wikirs-ui.workspace = true
 tower.workspace = true
 http-body-util.workspace = true
 axum.workspace = true

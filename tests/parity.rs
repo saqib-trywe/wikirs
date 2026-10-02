@@ -55,7 +55,7 @@ fn tui_palette_lists_every_operation_with_a_form() {
     );
     // The form renderer supports every Input's schema (interfaces.md#parity-test).
     for name in &palette {
-        if let Err(err) = wikirs_forms::Form::for_op(name).expect("in the registry") {
+        if let Err(err) = wikirs_ui::Form::for_op(name).expect("in the registry") {
             panic!("TUI palette: {err}");
         }
     }

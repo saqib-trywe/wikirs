@@ -1,4 +1,4 @@
-//! Schema → form model for the GUI and TUI palettes (docs/spec/interfaces.md#gui-and-tui).
+//! The palette's form model (docs/spec/interfaces.md#gui-and-tui).
 //!
 //! A [`Form`] is built from an Operation's Input schema: one [`Field`] per
 //! property, each with a [`Control`] holding what the user has entered.

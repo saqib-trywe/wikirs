@@ -8,7 +8,7 @@ use ratatui::{
     text::{Line, Span},
 };
 use serde_json::Value;
-use wikirs_forms::{Control, Field, FieldError, Form};
+use wikirs_ui::{Control, Field, FieldError, Form};
 
 /// A form being filled in.
 pub struct FormView {

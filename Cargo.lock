@@ -3021,10 +3021,10 @@ dependencies = [
  "tower",
  "wikirs-cli",
  "wikirs-core",
- "wikirs-forms",
  "wikirs-http",
  "wikirs-mcp",
  "wikirs-tui",
+ "wikirs-ui",
 ]
 
 [[package]]
@@ -3061,15 +3061,6 @@ dependencies = [
  "toml_edit",
  "xxhash-rust",
  "yaml-rust2",
-]
-
-[[package]]
-name = "wikirs-forms"
-version = "0.1.0"
-dependencies = [
- "serde_json",
- "tempfile",
- "wikirs-core",
 ]
 
 [[package]]
@@ -3115,7 +3106,16 @@ dependencies = [
  "serde_json",
  "tempfile",
  "wikirs-core",
- "wikirs-forms",
+ "wikirs-ui",
+]
+
+[[package]]
+name = "wikirs-ui"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "tempfile",
+ "wikirs-core",
 ]
 
 [[package]]

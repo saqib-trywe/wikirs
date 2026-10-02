@@ -14,9 +14,10 @@ use wikirs_core::{
 };
 use wikirs_tui::{
     App, Request,
-    app::{Banner, Focus, Mode},
+    app::{Focus, Mode},
     ui,
 };
+use wikirs_ui::Notice;
 
 const PAGES: &[(&str, &str)] = &[
     ("eng", "# Engineering\n\nStart at [[eng/rust]].\n"),
@@ -102,19 +103,19 @@ impl Fixture {
     }
 
     fn current(&self) -> &str {
-        &self.app.page.as_ref().unwrap().path
+        &self.app.session.page.as_ref().unwrap().path
     }
 
     fn buffer(&self) -> &str {
-        &self.app.page.as_ref().unwrap().buffer
+        &self.app.session.page.as_ref().unwrap().buffer
     }
 
     fn banner(&self) -> String {
-        match &self.app.banner {
+        match &self.app.session.notice {
             None => String::new(),
-            Some(Banner::Info(m) | Banner::Error(m)) => m.clone(),
-            Some(Banner::Create(p)) => format!("create {p}"),
-            Some(Banner::ChangedOnDisk { .. }) => "changed on disk".into(),
+            Some(Notice::Info(m) | Notice::Error(m)) => m.clone(),
+            Some(Notice::Create(p)) => format!("create {p}"),
+            Some(Notice::ChangedOnDisk { .. }) => "changed on disk".into(),
         }
     }
 
@@ -205,10 +206,7 @@ fn a_link_with_a_heading_scrolls_to_it() {
     fx.open("eng/rust/async");
     fx.keys("1");
     assert_eq!(fx.current(), "eng/rust");
-    assert!(
-        fx.app.page.as_ref().unwrap().scroll >= 10,
-        "not scrolled to Pinning"
-    );
+    assert!(fx.app.scroll >= 10, "not scrolled to Pinning");
 }
 
 #[test]
@@ -224,7 +222,7 @@ fn following_a_broken_link_offers_to_create_the_page() {
     // The Link isn't broken any more.
     fx.open("eng/rust");
     assert!(!wikirs_tui::render::is_broken(
-        fx.app.page.as_ref().unwrap().resolved[1].as_ref()
+        fx.app.session.page.as_ref().unwrap().resolved[1].as_ref()
     ));
 }
 
@@ -255,6 +253,7 @@ fn tree_selection_opens_pages_and_placeholders_offer_create() {
     let mut fx = Fixture::new();
     let rows: Vec<_> = fx
         .app
+        .session
         .tree
         .iter()
         .map(|r| (r.path.as_str(), r.placeholder))
@@ -295,7 +294,7 @@ fn inline_edit_then_save_writes_the_page() {
     let mut fx = Fixture::new();
     fx.open("inbox");
     fx.keys("eNew line. <Esc>");
-    assert!(fx.app.page.as_ref().unwrap().dirty());
+    assert!(fx.app.session.page.as_ref().unwrap().dirty());
     assert!(fx.frame().contains("● unsaved"));
     fx.keys("<C-s>");
     assert_eq!(fx.banner(), "Saved `inbox`");
@@ -304,7 +303,7 @@ fn inline_edit_then_save_writes_the_page() {
         "New line. # Inbox\n\n- read [[eng/rust/async]]\n"
     );
     // Our own save's watch event doesn't look like a change on disk.
-    assert!(!fx.app.page.as_ref().unwrap().dirty());
+    assert!(!fx.app.session.page.as_ref().unwrap().dirty());
 }
 
 #[test]
@@ -318,7 +317,10 @@ fn editor_hand_off_loads_the_text_into_the_buffer() {
     );
     fx.app.editor_returned(Ok("# Inbox\n\nedited\n".into()));
     assert_eq!(fx.buffer(), "# Inbox\n\nedited\n");
-    assert!(fx.app.page.as_ref().unwrap().dirty(), "loaded, not saved");
+    assert!(
+        fx.app.session.page.as_ref().unwrap().dirty(),
+        "loaded, not saved"
+    );
     fx.keys("<C-s>");
     assert_eq!(fx.read("inbox"), "# Inbox\n\nedited\n");
 }
@@ -370,7 +372,7 @@ fn a_clean_page_reloads_when_changed_on_disk() {
     std::fs::write(fx.file("inbox"), "# Inbox\n\nfrom elsewhere\n").unwrap();
     fx.external(EventKind::PageModified, "inbox");
     assert_eq!(fx.buffer(), "# Inbox\n\nfrom elsewhere\n");
-    assert!(!fx.app.page.as_ref().unwrap().dirty());
+    assert!(!fx.app.session.page.as_ref().unwrap().dirty());
 }
 
 #[test]
@@ -402,7 +404,7 @@ fn reload_takes_the_disk_version() {
     fx.external(EventKind::PageModified, "inbox");
     fx.keys("r");
     assert_eq!(fx.buffer(), "theirs\n");
-    assert!(fx.app.banner.is_none());
+    assert!(fx.app.session.notice.is_none());
 }
 
 #[test]
@@ -423,11 +425,11 @@ fn a_deleted_page_is_marked_and_saving_recreates_it() {
     fx.open("inbox");
     std::fs::remove_file(fx.file("inbox")).unwrap();
     fx.external(EventKind::PageDeleted, "inbox");
-    assert!(fx.app.page.as_ref().unwrap().deleted);
+    assert!(fx.app.session.page.as_ref().unwrap().deleted);
     assert!(fx.frame().contains("✗ deleted"));
     fx.keys("<C-s>");
     assert_eq!(fx.read("inbox"), PAGES[3].1);
-    assert!(!fx.app.page.as_ref().unwrap().deleted);
+    assert!(!fx.app.session.page.as_ref().unwrap().deleted);
 }
 
 // -------------------------------------------------------------- Operations
@@ -472,6 +474,7 @@ fn command_line_runs_operations_cli_style() {
     // The open Page took the change in (no unsaved edits).
     assert!(
         fx.app
+            .session
             .page
             .as_ref()
             .unwrap()

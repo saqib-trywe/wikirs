@@ -10,8 +10,10 @@ use ratatui::{
     widgets::{Block, Clear, List, ListItem, ListState, Paragraph, Wrap},
 };
 
+use wikirs_ui::{Notice, OpenPage, Session};
+
 use crate::{
-    app::{App, Banner, Focus, Mode, OpenPage, PickKind, Picker, ResultPopup},
+    app::{App, Focus, Mode, PickKind, Picker, ResultPopup},
     form::FormView,
     render,
 };
@@ -21,14 +23,14 @@ const HINTS: &str = "j/k move  Tab links  1-9 follow  o open  / search  b backli
 pub fn draw(f: &mut Frame, app: &App) {
     let [top, banner, main, status] = Layout::vertical([
         Constraint::Length(1),
-        Constraint::Length(u16::from(app.banner.is_some())),
+        Constraint::Length(u16::from(app.session.notice.is_some())),
         Constraint::Fill(1),
         Constraint::Length(1),
     ])
     .areas(f.area());
 
     f.render_widget(top_bar(app), top);
-    if let Some(b) = &app.banner {
+    if let Some(b) = &app.session.notice {
         f.render_widget(banner_line(b), banner);
     }
     let [left, centre, right] = Layout::horizontal([
@@ -46,7 +48,7 @@ pub fn draw(f: &mut Frame, app: &App) {
 
 fn top_bar(app: &App) -> Line<'static> {
     let mut spans = vec![Span::raw(" wikirs ").bold().reversed(), Span::raw("  ")];
-    if let Some(page) = &app.page {
+    if let Some(page) = &app.session.page {
         let mut acc = String::new();
         let mut parts = Vec::new();
         for seg in page.path.split('/') {
@@ -55,7 +57,8 @@ fn top_bar(app: &App) -> Line<'static> {
             }
             acc.push_str(seg);
             parts.push(
-                app.tree
+                app.session
+                    .tree
                     .iter()
                     .find(|r| r.path == acc)
                     .map_or_else(|| seg.to_string(), |r| r.title.clone()),
@@ -72,14 +75,14 @@ fn top_bar(app: &App) -> Line<'static> {
     Line::from(spans)
 }
 
-fn banner_line(banner: &Banner) -> Line<'static> {
+fn banner_line(banner: &Notice) -> Line<'static> {
     match banner {
-        Banner::Info(m) => Line::from(format!(" {m}  (x dismiss)")).black().on_cyan(),
-        Banner::Error(m) => Line::from(format!(" {m}  (x dismiss)")).white().on_red(),
-        Banner::Create(path) => Line::from(format!(" No Page `{path}`: c creates it  (x dismiss)"))
+        Notice::Info(m) => Line::from(format!(" {m}  (x dismiss)")).black().on_cyan(),
+        Notice::Error(m) => Line::from(format!(" {m}  (x dismiss)")).white().on_red(),
+        Notice::Create(path) => Line::from(format!(" No Page `{path}`: c creates it  (x dismiss)"))
             .black()
             .on_yellow(),
-        Banner::ChangedOnDisk { .. } => Line::from(
+        Notice::ChangedOnDisk { .. } => Line::from(
             " CHANGED ON DISK: (Esc first if editing)  [r] Reload   [m] Keep mine   [d] Compare ",
         )
         .white()
@@ -97,8 +100,9 @@ fn focused(on: bool) -> Style {
 }
 
 fn tree(f: &mut Frame, app: &App, area: Rect) {
-    let current = app.page.as_ref().map(|p| p.path.as_str());
+    let current = app.session.page.as_ref().map(|p| p.path.as_str());
     let items: Vec<ListItem> = app
+        .session
         .tree
         .iter()
         .map(|row| {
@@ -127,7 +131,7 @@ fn tree(f: &mut Frame, app: &App, area: Rect) {
 }
 
 fn page(f: &mut Frame, app: &App, area: Rect) {
-    let Some(page) = &app.page else {
+    let Some(page) = &app.session.page else {
         f.render_widget(
             Paragraph::new("No Pages yet: `:create_page <path>` or ctrl-k")
                 .block(Block::bordered()),
@@ -146,12 +150,12 @@ fn page(f: &mut Frame, app: &App, area: Rect) {
         f.render_widget(&editor, area);
         return;
     }
-    let selected = (app.focus == Focus::Links).then_some(page.link_sel);
+    let selected = (app.focus == Focus::Links).then_some(app.link_sel);
     let rendered = render::render(&page.doc, &page.resolved, selected);
     f.render_widget(
         Paragraph::new(Text::from(rendered.lines))
             .wrap(Wrap { trim: false })
-            .scroll((page.scroll, 0))
+            .scroll((app.scroll, 0))
             .block(Block::bordered().title(title)),
         area,
     );
@@ -159,7 +163,7 @@ fn page(f: &mut Frame, app: &App, area: Rect) {
 
 fn side(f: &mut Frame, app: &App, area: Rect) {
     let mut lines = Vec::new();
-    if let Some(page) = &app.page {
+    if let Some(page) = &app.session.page {
         side_lines(app, page, &mut lines);
     }
     f.render_widget(
@@ -177,6 +181,7 @@ fn side_lines(app: &App, page: &OpenPage, lines: &mut Vec<Line<'static>>) {
     }
     for from in &page.backlinks {
         let title = app
+            .session
             .tree
             .iter()
             .find(|r| &r.path == from)
@@ -194,7 +199,7 @@ fn side_lines(app: &App, page: &OpenPage, lines: &mut Vec<Line<'static>>) {
             Span::raw(format!("{}{target}", if broken { "✗ " } else { "" })),
         ]);
         line = if broken { line.red() } else { line.blue() };
-        if app.focus == Focus::Links && i == page.link_sel {
+        if app.focus == Focus::Links && i == app.link_sel {
             line = line.reversed();
         }
         lines.push(line);
@@ -258,14 +263,8 @@ fn popups(f: &mut Frame, app: &App) {
         Mode::Result(popup) => result_popup(f, popup),
         _ => {}
     }
-    if let (
-        Some(Banner::ChangedOnDisk {
-            disk,
-            compare: true,
-            ..
-        }),
-        Some(page),
-    ) = (&app.banner, &app.page)
+    if let (Some(Notice::ChangedOnDisk { disk, .. }), Some(page), true) =
+        (&app.session.notice, &app.session.page, app.compare)
     {
         let area = popup_area(f, 120, 24);
         let [mine, theirs] =
@@ -287,7 +286,7 @@ fn popups(f: &mut Frame, app: &App) {
 
 fn palette(f: &mut Frame, query: &str, sel: usize) {
     let area = popup_area(f, 90, 24);
-    let ops = App::palette_matches(query);
+    let ops = Session::palette_matches(query);
     let items: Vec<ListItem> = ops
         .iter()
         .map(|op| {

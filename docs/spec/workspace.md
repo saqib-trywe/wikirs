@@ -13,7 +13,8 @@ crates/
   wikirs-core/          # Wiki handle, Operations, Operation trait + operations![] registry,
                         # markdown parse/splicing + document model (ADR 0007), SQLite Index,
                         # watcher, write lock, journal
-  wikirs-forms/         # schema → form model (fields, validation, dry-run toggle), no UI code
+  wikirs-ui/            # what the GUI and TUI share, no UI code: the form model (schema →
+                        # fields, validation, dry-run toggle) and the open-Page session
   wikirs-cli/           # clap subcommands + Render
   wikirs-mcp/           # rmcp tools + resources
   wikirs-http/          # axum RPC routes, security middleware, mounts wikirs-mcp at /mcp
@@ -22,7 +23,7 @@ crates/
 ```
 
 - **`wikirs-core` is one crate.** It's one deep module behind a small module interface: `Wiki::open`, `run`, and the registry. Internal modules keep their own seams for unit tests. They become separate crates only once a second consumer needs them.
-- **`wikirs-forms`** is a real seam, because two UIs (GUI and TUI) render its form model.
+- **`wikirs-ui`** is a real seam, because two UIs (GUI and TUI) use it. Its form model is generated from the registry. Its `Session` is the open Page and its reactions to saves and changes on disk ([process-model.md](process-model.md#open-page-changed-on-disk-gui-and-tui)), so the two UIs can't drift. (It began as `wikirs-forms`, and grew when the GUI became the session's second consumer.)
 - All crates are `publish = false` for now.
 
 ## Dependency direction
@@ -31,11 +32,11 @@ crates/
 wikirs (bin) ──► wikirs-cli ─┐
             ├──► wikirs-http ──► wikirs-mcp ─┤
             ├──► wikirs-mcp ────────────────┤
-            ├──► wikirs-tui ──► wikirs-forms ┼──► wikirs-core
-            └──► wikirs-gui ──► wikirs-forms ┘
+            ├──► wikirs-tui ──► wikirs-ui ───┼──► wikirs-core
+            └──► wikirs-gui ──► wikirs-ui ───┘
 ```
 
-Adapters depend only on `wikirs-core` (and `wikirs-forms`), never on each other, except that `wikirs-http` mounts `wikirs-mcp`.
+Adapters depend only on `wikirs-core` (and `wikirs-ui`), never on each other, except that `wikirs-http` mounts `wikirs-mcp`.
 
 ## Features
 

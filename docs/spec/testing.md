@@ -58,7 +58,7 @@ Behaviour itself is covered by the parity suite.
 
 - **TUI**: `insta` snapshots of ratatui `TestBackend` frames for each view and popup, plus key-sequence tests (keys in, frame out).
 - **GUI**:
-  - The logic lives outside rendering and is tested directly: `wikirs-forms` and the core's document model.
+  - The logic lives outside rendering and is tested directly: `wikirs-ui` (forms and the open-Page session) and the core's document model.
   - The gpui layer gets a few **headless smoke tests** through gpui-kit's `test-support` feature: open a Wiki, open a Page, run a palette Operation, trigger the conflict banner.
   - No pixel tests.
 - **Palette coverage**: the parity test checks that every Operation appears in both palettes.

@@ -1,5 +1,5 @@
 [package]
-name = "wikirs-forms"
+name = "wikirs-ui"
 edition.workspace = true
 version.workspace = true
 publish.workspace = true

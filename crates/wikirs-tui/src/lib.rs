@@ -22,7 +22,7 @@ pub use app::{App, Request};
 /// with the registry).
 #[must_use]
 pub fn palette_entries() -> Vec<String> {
-    App::palette_matches("")
+    wikirs_ui::Session::palette_matches("")
         .iter()
         .map(|op| op.name.to_string())
         .collect()
