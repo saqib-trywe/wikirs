@@ -4,7 +4,7 @@ A local-only, markdown-native wiki for one person across their machines. A Wiki 
 
 One binary, no daemon. Every Operation (create, move, link, tag, search, …) can be run identically from the CLI, the terminal UI, an HTTP API and an MCP server for AI agents. All of these are generated from one registry, so they can't drift apart.
 
-**Status:** all 32 Operations, the CLI, MCP, HTTP and the TUI are built. The desktop GUI is next.
+**Status:** all 32 Operations, the CLI, MCP, HTTP and the TUI are built. The desktop GUI shows and edits Pages; its palette, quick open and move dialog come next.
 
 ## What it does
 
@@ -18,7 +18,11 @@ One binary, no daemon. Every Operation (create, move, link, tag, search, …) ca
 
 ## Install
 
-Needs Rust 1.98.1 (pinned in `rust-toolchain.toml`; rustup picks it up). Then, on macOS or Linux:
+Needs Rust 1.98.1 (pinned in `rust-toolchain.toml`; rustup picks it up). The GUI also needs:
+- on macOS, the full Xcode (for Metal), not just the Command Line Tools;
+- on Linux, `libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libfontconfig-dev libfreetype-dev libvulkan-dev`.
+
+`--headless` (below) needs neither. Then, on macOS or Linux:
 
 ```sh
 scripts/install.sh
@@ -26,7 +30,7 @@ scripts/install.sh
 
 This builds a release binary and installs it as `~/.local/bin/wikirs`. It also creates the config folder `~/.config/wikirs/` (or `$XDG_CONFIG_HOME/wikirs`) with a commented starter `config.toml`, which a later run never overwrites. Options:
 - `--bin-dir DIR` installs the binary somewhere else.
-- `--headless` builds a CLI-only binary: no MCP, HTTP, TUI or tokio.
+- `--headless` builds a CLI-only binary: no MCP, HTTP, TUI, GUI or tokio.
 - `--uninstall` removes the binary and leaves the config.
 
 To build by hand instead, run `cargo build --release`. The binary is `target/release/wikirs`.
@@ -54,6 +58,7 @@ wikirs tui
 | | Run | Notes |
 |---|---|---|
 | **CLI** | `wikirs <operation> …` | Subcommands are kebab-case (`move-page`). |
+| **GUI** | `wikirs gui [page]` | Pages and Tags trees, the rendered Page with clickable Links (a Broken Link offers to create its Page), and Backlinks/Links/Outline/Tags. ⌘E shows source and preview side by side, and ⌘S saves. See [gui.md](docs/spec/gui.md). |
 | **TUI** | `wikirs tui [page]` | Pages tree, rendered Page with numbered Links (type the number to follow one), Backlinks/Outline/Tags. `e` edits, `E` opens `$EDITOR`, `:` runs an Operation, ctrl-k is the palette. See [tui.md](docs/spec/tui.md). |
 | **MCP** | `wikirs mcp --wiki <path or name>` | stdio, for AI agents. Every Operation is a tool, Pages are resources, and changes arrive as notifications. Add `--read-only` to expose queries only. |
 | **HTTP** | `wikirs serve` | `POST /ops/<operation>` with a JSON Input, `GET /ops` for the catalogue, `GET /ops/watch` for change events (SSE), and MCP over HTTP at `/mcp`. Listens on localhost:4747 by default. See [http-security.md](docs/spec/http-security.md) for tokens and remote access. |
@@ -90,7 +95,7 @@ cargo clippy --workspace --all-targets --all-features -- -D warnings
 The workspace is split into crates:
 - `wikirs-core`: the Wiki, Operations, Index, markdown parser and document model
 - `wikirs-ui`: what the GUI and TUI share: palette forms, and the open-Page session (saves, conflicts, changes on disk)
-- adapters: `wikirs-cli`, `wikirs-mcp`, `wikirs-http`, `wikirs-tui`
+- adapters: `wikirs-cli`, `wikirs-mcp`, `wikirs-http`, `wikirs-tui`, `wikirs-gui`
 
 Adapters depend only on the core, never on each other. A parity test checks that every Interface exposes every Operation with identical results. `UPDATE_DOCS=1 cargo test --test docs` regenerates the Operation reference. Testing is described in [testing.md](docs/spec/testing.md), and the crate layout in [workspace.md](docs/spec/workspace.md).
 

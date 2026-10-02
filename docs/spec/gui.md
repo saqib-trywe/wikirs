@@ -39,6 +39,16 @@ Everything else (config, attachments management, `check`, Index maintenance, `wa
 
 This is the banner from the prototype (Reload / Keep mine / Compare). In the real build, Compare is a proper side-by-side diff.
 
+## As built
+
+`wikirs gui [page]` (crate `wikirs-gui`, gpui-kit `=0.6.6`) drives the same open-Page `Session` as the TUI (`wikirs-ui`):
+- ⌘S and ⌘E are ctrl-S and ctrl-E on Linux and Windows.
+- Clicking a Placeholder in the tree, or a Broken Link, shows a banner with "Create it".
+- Following a `[[page#heading]]` Link scrolls to the heading.
+- Watch events are taken in every 250 ms on the UI thread.
+
+Still to come (the next slice): the ⌘K palette, ⌘P quick open and search, the move dialog with its Plan, the tree's context menu, `[[` autocomplete, a real diff for Compare, Tag → Pages, and inline images.
+
 ## Rendering work the build needs
 
 The prototype found gaps in gpui-kit 0.6.6's `TextView`, and [ADR 0007](../adr/0007-one-markdown-parse-shared-document-model.md) replaces it for Page rendering:

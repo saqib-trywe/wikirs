@@ -3,7 +3,7 @@
 #
 #   scripts/install.sh               # binary in ~/.local/bin, config in ~/.config/wikirs
 #   scripts/install.sh --bin-dir DIR # install the binary somewhere else
-#   scripts/install.sh --headless    # CLI only: no MCP, HTTP or TUI (and no tokio)
+#   scripts/install.sh --headless    # CLI only: no MCP, HTTP, TUI or GUI (and no tokio)
 #   scripts/install.sh --uninstall   # remove the binary (config is left alone)
 #
 # The config dir is the one wikirs reads: $XDG_CONFIG_HOME/wikirs if that's

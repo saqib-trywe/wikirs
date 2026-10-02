@@ -56,6 +56,10 @@ fn main() -> ExitCode {
             Err(err) => print_error(&err, json),
             Ok(wiki) => run_serve(&wiki, &args),
         },
+        Top::Gui { page } => match open_wiki(flag, Discovery::Cli) {
+            Err(err) => print_error(&err, json),
+            Ok(wiki) => run_gui(wiki, page),
+        },
         Top::Tui { page } => match open_wiki(flag, Discovery::Cli) {
             Err(err) => print_error(&err, json),
             Ok(wiki) => run_tui(wiki, page.as_deref()),
@@ -82,6 +86,18 @@ fn run_mcp(wiki: Wiki, read_only: bool) -> ExitCode {
 #[cfg(not(feature = "mcp"))]
 fn run_mcp(_wiki: Wiki, _read_only: bool) -> ExitCode {
     eprintln!("error: `mcp` is not built into this binary (rebuild with the `mcp` feature)");
+    ExitCode::from(2)
+}
+
+#[cfg(feature = "gui")]
+fn run_gui(wiki: Wiki, page: Option<String>) -> ExitCode {
+    wikirs_gui::run(wiki, page);
+    ExitCode::SUCCESS
+}
+
+#[cfg(not(feature = "gui"))]
+fn run_gui(_wiki: Wiki, _page: Option<String>) -> ExitCode {
+    eprintln!("error: `gui` is not built into this binary (rebuild with the `gui` feature)");
     ExitCode::from(2)
 }
 

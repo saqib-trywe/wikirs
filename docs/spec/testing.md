@@ -68,5 +68,5 @@ Behaviour itself is covered by the parity suite.
 | When | Where | What |
 |---|---|---|
 | every push | Linux | `cargo test --all-features` (with gpui's Linux deps), `clippy`, `fmt`, `cargo check --no-default-features` |
-| every push | macOS, Windows | `cargo test --no-default-features --features tui,serve,mcp` (paths, case, rename and file-lock behaviour differ there), plus `cargo build --all-features` so the gpui build can't break unnoticed |
+| every push | macOS, Windows | `cargo test --workspace` with default features, so the GUI's headless tests run there too (paths, case, rename and file-lock behaviour differ on these platforms) |
 | nightly | Linux | long proptest runs (more cases) |

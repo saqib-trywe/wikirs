@@ -370,11 +370,12 @@ mod tests {
 
     #[test]
     fn choices_bools_and_lists() {
-        // check: kinds (list of choices), scope (group).
+        // check: scope (a group: space, path_prefix), then kinds (a list of choices).
         let mut form = view("check");
         let input = press(
             &mut form,
             &[
+                vec![KeyEvent::from(KeyCode::Down); 3],
                 chars("broken_link,nope"),
                 vec![KeyEvent::from(KeyCode::Enter)],
             ]

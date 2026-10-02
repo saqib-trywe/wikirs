@@ -11,7 +11,7 @@ pub mod render;
 pub mod result;
 pub mod ui;
 
-use std::{io, path::Path, process::Command, time::Duration};
+use std::{io, process::Command, time::Duration};
 
 use ratatui::crossterm::event::{self, Event, KeyEventKind};
 use wikirs_core::Wiki;
@@ -53,7 +53,7 @@ pub fn run(wiki: Wiki, page: Option<&str>) -> io::Result<()> {
                 terminal = ratatui::init();
                 app.editor_returned(edited);
             }
-            Some(Request::OpenExternal(path)) => open_externally(&path),
+            Some(Request::OpenExternal(path)) => wikirs_ui::open_externally(&path),
             None => {}
         }
         if app.should_quit() {
@@ -92,22 +92,4 @@ pub fn edit_with(editor: &str, text: &str) -> io::Result<String> {
         return Err(io::Error::other(format!("`{editor}` exited with {status}")));
     }
     std::fs::read_to_string(file.path())
-}
-
-/// Opens a file in the system viewer, without waiting for it.
-fn open_externally(path: &Path) {
-    let mut command = if cfg!(target_os = "macos") {
-        Command::new("open")
-    } else if cfg!(windows) {
-        let mut c = Command::new("cmd");
-        c.args(["/C", "start", ""]);
-        c
-    } else {
-        Command::new("xdg-open")
-    };
-    let _ = command
-        .arg(path)
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn();
 }

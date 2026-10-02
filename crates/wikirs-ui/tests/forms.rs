@@ -30,7 +30,7 @@ fn required_fields_come_first_in_declaration_order() {
     assert_eq!(names, ["key", "value", "scope"]);
     let form = Form::for_op("create_page").unwrap().unwrap();
     let names: Vec<_> = form.fields.iter().map(|f| f.name.as_str()).collect();
-    assert_eq!(names, ["content", "parent", "path", "title"]);
+    assert_eq!(names, ["path", "parent", "title", "content"]);
 }
 
 #[test]
@@ -41,7 +41,7 @@ fn controls_follow_the_schema() {
     };
     assert_eq!(
         filter.iter().map(|f| f.name.as_str()).collect::<Vec<_>>(),
-        ["exact", "path_prefix", "space", "tag"]
+        ["space", "path_prefix", "tag", "exact"]
     );
     assert!(matches!(
         form.field("limit").unwrap().control,

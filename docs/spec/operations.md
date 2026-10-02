@@ -199,7 +199,7 @@ Make a folder a Wiki by creating `.wikirs/config.toml`, which also marks its roo
 |---|---|---|
 | `dry_run?` | boolean | Return the Plan without applying it. |
 
-Output: `applied`, `path`, `plan`.
+Output: `path`, `plan`, `applied`.
 
 ### `get_config` (query)
 
@@ -217,12 +217,12 @@ Set a setting in the Wiki's committed file or this machine's (`null` removes it)
 
 | Input | Type | Description |
 |---|---|---|
-| `dry_run?` | boolean | Return the Plan without applying it. |
 | `key` | string | A setting, e.g. `links.syntax`. |
-| `scope` | `wiki` \| `machine` | `wiki` (the committed `.wikirs/config.toml`) or `machine` (this machine only). |
 | `value` | any | The new value; `null` removes the setting from that file. On the CLI: JSON if it parses as JSON, else a string. |
+| `scope` | `wiki` \| `machine` | `wiki` (the committed `.wikirs/config.toml`) or `machine` (this machine only). |
+| `dry_run?` | boolean | Return the Plan without applying it. |
 
-Output: `applied`, `key`, `plan`, `scope`.
+Output: `key`, `scope`, `plan`, `applied`.
 
 ### `get_page` (query)
 
@@ -232,7 +232,7 @@ Read a Page: its raw markdown, Title and version.
 |---|---|---|
 | `page` | string | Page Path, e.g. `eng/rust/async-notes`. |
 
-Output: `content`, `frontmatter`, `path`, `tags`, `title`, `version`.
+Output: `path`, `title`, `content`, `frontmatter`, `tags`, `version`.
 
 ### `list_pages` (query)
 
@@ -241,9 +241,9 @@ List Pages, filtered by Space or path prefix, sorted and paged.
 | Input | Type | Description |
 |---|---|---|
 | `filter?` | `Filter` |  |
+| `sort?` | `path` \| `title` \| `modified` | `path` (default), `title` or `modified` (newest first). |
 | `limit?` | integer | At most this many (default 100). |
 | `offset?` | integer | Skip this many first. |
-| `sort?` | `path` \| `title` \| `modified` | `path` (default), `title` or `modified` (newest first). |
 
 Output: `pages`, `total`.
 
@@ -253,8 +253,8 @@ List the Child Pages and Placeholders under a Page (or the Wiki root), in displa
 
 | Input | Type | Description |
 |---|---|---|
-| `depth?` | integer | Levels to list: 1 is direct children only. |
 | `parent?` | string | Page Path or Placeholder; the Wiki root if absent. |
+| `depth?` | integer | Levels to list: 1 is direct children only. |
 
 Output: `children`.
 
@@ -295,7 +295,7 @@ Resolve a Link as written in a Page: its target and status.
 | `from_page` | string | The Page the Link is written in (relative Links resolve from here). |
 | `raw` | string | The Link's source, e.g. `[[eng/rust#Pinning]]` or `[x](../a.md)`. |
 
-Output: `heading`, `status`, `target`, `target_kind`.
+Output: `target`, `target_kind`, `heading`, `status`.
 
 ### `outline` (query)
 
@@ -323,8 +323,8 @@ Diagnostics: Broken Links, missing headings, case fallbacks, mixed-case Tags, un
 
 | Input | Type | Description |
 |---|---|---|
-| `kinds?` | `broken_link` \| `heading_missing` \| `case_fallback` \| `mixed_case_tag` \| `unrecovered_edit`[] | Only these kinds (default: all). |
 | `scope?` | `Scope` | Only Pages in this part of the Wiki. |
+| `kinds?` | `broken_link` \| `heading_missing` \| `case_fallback` \| `mixed_case_tag` \| `unrecovered_edit`[] | Only these kinds (default: all). |
 
 Output: `diagnostics`.
 
@@ -334,13 +334,13 @@ Create a Page at a path, or under a parent from a Title.
 
 | Input | Type | Description |
 |---|---|---|
+| `path?` | string | Page Path to create. Give either this or `title`. |
+| `parent?` | string | Parent Page Path for a `title`-based create (Wiki root if absent). |
+| `title?` | string | Title: slugified into the filename and written as the H1. |
 | `content?` | string | Initial markdown. (May start with `---` frontmatter.) |
 | `dry_run?` | boolean | Return the Plan without applying it. |
-| `parent?` | string | Parent Page Path for a `title`-based create (Wiki root if absent). |
-| `path?` | string | Page Path to create. Give either this or `title`. |
-| `title?` | string | Title: slugified into the filename and written as the H1. |
 
-Output: `applied`, `path`, `plan`.
+Output: `path`, `plan`, `applied`.
 
 ### `write_page` (mutation)
 
@@ -348,12 +348,12 @@ Replace a Page's content. Pass `base_version` to refuse if it changed since you 
 
 | Input | Type | Description |
 |---|---|---|
-| `base_version?` | string | The `version` you read; if the Page changed since, nothing is written (`conflict`). |
-| `content` | string | The new markdown. (May start with `---` frontmatter.) |
-| `dry_run?` | boolean | Return the Plan without applying it. |
 | `page` | string | Page Path. |
+| `content` | string | The new markdown. (May start with `---` frontmatter.) |
+| `base_version?` | string | The `version` you read; if the Page changed since, nothing is written (`conflict`). |
+| `dry_run?` | boolean | Return the Plan without applying it. |
 
-Output: `applied`, `path`, `plan`, `version`.
+Output: `path`, `plan`, `applied`, `version`.
 
 ### `edit_page` (mutation)
 
@@ -361,12 +361,12 @@ Replace exact strings in a Page; each `old` must match exactly once.
 
 | Input | Type | Description |
 |---|---|---|
+| `page` | string | Page Path. |
+| `edits` | `Replacement`[] | Replacements, each matched against the Page as it is now. |
 | `base_version?` | string | The `version` you read; if the Page changed since, nothing is written (`conflict`). |
 | `dry_run?` | boolean | Return the Plan without applying it. |
-| `edits` | `Replacement`[] | Replacements, each matched against the Page as it is now. |
-| `page` | string | Page Path. |
 
-Output: `applied`, `path`, `plan`, `version`.
+Output: `path`, `plan`, `applied`, `version`.
 
 ### `set_page_meta` (mutation)
 
@@ -374,11 +374,11 @@ Set or remove a Page's frontmatter keys (`null` removes). Setting `title` never 
 
 | Input | Type | Description |
 |---|---|---|
-| `dry_run?` | boolean | Return the Plan without applying it. |
-| `meta` | object | Keys to set, e.g. `{"title": "Async", "order": 10}`; `null` removes a key. |
 | `page` | string | Page Path. |
+| `meta` | object | Keys to set, e.g. `{"title": "Async", "order": 10}`; `null` removes a key. |
+| `dry_run?` | boolean | Return the Plan without applying it. |
 
-Output: `applied`, `path`, `plan`.
+Output: `path`, `plan`, `applied`.
 
 ### `move_page` (mutation)
 
@@ -386,11 +386,11 @@ Move or rename a Page with its Child Pages and Attachments, rewriting every Link
 
 | Input | Type | Description |
 |---|---|---|
-| `dry_run?` | boolean | Return the Plan without applying it. |
 | `from` | string | Page Path to move (a Placeholder is fine). |
 | `to` | string | New Page Path. |
+| `dry_run?` | boolean | Return the Plan without applying it. |
 
-Output: `applied`, `from`, `links_rewritten`, `moved`, `plan`, `to`.
+Output: `from`, `to`, `plan`, `applied`, `moved`, `links_rewritten`.
 
 ### `delete_page` (mutation)
 
@@ -398,11 +398,11 @@ Delete a Page (with `recursive`, its whole subtree). The Plan warns about Links 
 
 | Input | Type | Description |
 |---|---|---|
-| `dry_run?` | boolean | Return the Plan without applying it. |
 | `page` | string | Page Path. |
 | `recursive?` | boolean | Also delete every Child Page and Attachment under it. |
+| `dry_run?` | boolean | Return the Plan without applying it. |
 
-Output: `applied`, `deleted`, `plan`.
+Output: `plan`, `applied`, `deleted`.
 
 ### `reorder_page` (mutation)
 
@@ -410,12 +410,12 @@ Place a Page before or after a sibling by writing its `order:` (siblings are ren
 
 | Input | Type | Description |
 |---|---|---|
-| `after?` | string | Place it just after this sibling. |
-| `before?` | string | Place it just before this sibling. |
-| `dry_run?` | boolean | Return the Plan without applying it. |
 | `page` | string | Page Path. |
+| `before?` | string | Place it just before this sibling. |
+| `after?` | string | Place it just after this sibling. |
+| `dry_run?` | boolean | Return the Plan without applying it. |
 
-Output: `applied`, `path`, `plan`, `written`.
+Output: `path`, `plan`, `applied`, `written`.
 
 ### `tag_page` (mutation)
 
@@ -423,11 +423,11 @@ Add Tags to a Page's frontmatter (Tags it already carries are skipped).
 
 | Input | Type | Description |
 |---|---|---|
-| `dry_run?` | boolean | Return the Plan without applying it. |
 | `page` | string | Page Path. |
 | `tags` | string[] | Tags, e.g. `lang/rust`. |
+| `dry_run?` | boolean | Return the Plan without applying it. |
 
-Output: `applied`, `path`, `plan`, `tags`.
+Output: `path`, `plan`, `applied`, `tags`.
 
 ### `untag_page` (mutation)
 
@@ -435,11 +435,11 @@ Remove Tags from a Page: frontmatter entries go, inline `#tag`s lose their `#` (
 
 | Input | Type | Description |
 |---|---|---|
-| `dry_run?` | boolean | Return the Plan without applying it. |
 | `page` | string | Page Path. |
 | `tags` | string[] | Tags, e.g. `lang/rust`. |
+| `dry_run?` | boolean | Return the Plan without applying it. |
 
-Output: `applied`, `path`, `plan`, `tags`.
+Output: `path`, `plan`, `applied`, `tags`.
 
 ### `rename_tag` (mutation)
 
@@ -447,11 +447,11 @@ Rename a Tag and its subtree across the Wiki (frontmatter and inline); onto an e
 
 | Input | Type | Description |
 |---|---|---|
-| `dry_run?` | boolean | Return the Plan without applying it. |
 | `from` | string | The Tag to rename, e.g. `lang/rust`. |
 | `to` | string | Its new name, e.g. `rust`. |
+| `dry_run?` | boolean | Return the Plan without applying it. |
 
-Output: `applied`, `pages`, `plan`.
+Output: `plan`, `applied`, `pages`.
 
 ### `add_attachment` (mutation)
 
@@ -459,12 +459,12 @@ Add an Attachment to a Page's folder, from a local file or base64. A taken name 
 
 | Input | Type | Description |
 |---|---|---|
-| `dry_run?` | boolean | Return the Plan without applying it. |
-| `name` | string | File name, e.g. `diagram.png`. |
 | `page` | string | Page Path of the Page it belongs to. |
+| `name` | string | File name, e.g. `diagram.png`. |
 | `source` | `AttachmentSource` |  |
+| `dry_run?` | boolean | Return the Plan without applying it. |
 
-Output: `applied`, `path`, `plan`, `size`, `version`.
+Output: `path`, `plan`, `applied`, `size`, `version`.
 
 ### `list_attachments` (query)
 
@@ -483,10 +483,10 @@ Read an Attachment: its content as base64, or its absolute local path.
 
 | Input | Type | Description |
 |---|---|---|
-| `as?` | `bytes` \| `local_path` | `bytes` (default) or `local_path`. |
 | `path` | string | Path from the Wiki root, e.g. `eng/rust/diagram.png`. |
+| `as?` | `bytes` \| `local_path` | `bytes` (default) or `local_path`. |
 
-Output: `base64`, `local_path`, `path`, `size`, `version`.
+Output: `path`, `size`, `version`, `base64`, `local_path`.
 
 ### `move_attachment` (mutation)
 
@@ -494,11 +494,11 @@ Move or rename an Attachment, rewriting every Link to it.
 
 | Input | Type | Description |
 |---|---|---|
-| `dry_run?` | boolean | Return the Plan without applying it. |
 | `from` | string | Current path, e.g. `eng/rust/diagram.png`. |
 | `to` | string | New path. |
+| `dry_run?` | boolean | Return the Plan without applying it. |
 
-Output: `applied`, `from`, `links_rewritten`, `plan`, `to`.
+Output: `from`, `to`, `plan`, `applied`, `links_rewritten`.
 
 ### `delete_attachment` (mutation)
 
@@ -506,10 +506,10 @@ Delete an Attachment. The Plan warns about Links that will break.
 
 | Input | Type | Description |
 |---|---|---|
-| `dry_run?` | boolean | Return the Plan without applying it. |
 | `path` | string | Path from the Wiki root. |
+| `dry_run?` | boolean | Return the Plan without applying it. |
 
-Output: `applied`, `path`, `plan`.
+Output: `path`, `plan`, `applied`.
 
 ### `search` (query)
 
@@ -517,10 +517,10 @@ Full-text search: plain terms, "quoted phrases" and prefix* (all must match).
 
 | Input | Type | Description |
 |---|---|---|
+| `text` | string | Plain terms (all must match), `"quoted phrases"`, and `prefix*`. |
 | `filter?` | `Filter` |  |
 | `limit?` | integer | At most this many (default 100). |
 | `offset?` | integer | Skip this many first. |
-| `text` | string | Plain terms (all must match), `"quoted phrases"`, and `prefix*`. |
 
 Output: `hits`, `total`.
 
@@ -530,7 +530,7 @@ Report on the Index: counts, freshness, skipped files, unrecovered edits.
 
 No inputs.
 
-Output: `attachments`, `cache_dir`, `last_updated`, `links`, `pages`, `root`, `skipped`, `stale`, `tags`, `unrecovered_edits`, `watcher`.
+Output: `root`, `cache_dir`, `pages`, `attachments`, `links`, `tags`, `last_updated`, `stale`, `watcher`, `skipped`, `unrecovered_edits`.
 
 ### `rebuild_index` (maintenance)
 
@@ -538,7 +538,7 @@ Drop the Index and rebuild it from the files. Changes no Wiki file.
 
 No inputs.
 
-Output: `attachments`, `cache_dir`, `last_updated`, `links`, `pages`, `root`, `skipped`, `stale`, `tags`, `unrecovered_edits`, `watcher`.
+Output: `root`, `cache_dir`, `pages`, `attachments`, `links`, `tags`, `last_updated`, `stale`, `watcher`, `skipped`, `unrecovered_edits`.
 
 ### `watch` (subscription)
 
@@ -548,7 +548,7 @@ Stream change events (Pages, Attachments, the Index) as they happen, from this p
 |---|---|---|
 | `scope?` | `Scope` | Only changes in this part of the Wiki. |
 
-Output: `from`, `kind`, `path`, `version`.
+Output: `kind`, `path`, `from`, `version`.
 
 ### Input types
 
@@ -556,30 +556,30 @@ Output: `from`, `kind`, `path`, `version`.
 
 | Field | Type | Description |
 |---|---|---|
-| `base64?` | string | The content, base64-encoded. |
 | `local_path?` | string | A file on this machine to copy in (Interfaces with local file access only). |
+| `base64?` | string | The content, base64-encoded. |
 
 **`Filter`**: Which Pages a query covers (operations.md `Filter`).
 
 | Field | Type | Description |
 |---|---|---|
-| `exact?` | boolean | With `tag`: only the Tag itself, not its descendants. |
-| `path_prefix?` | string | Only Pages whose Page Path starts with this. |
 | `space?` | string | Only this Space: its home Page and everything under it. |
+| `path_prefix?` | string | Only Pages whose Page Path starts with this. |
 | `tag?` | string | Only Pages carrying this Tag or, unless `exact`, one of its descendants. |
+| `exact?` | boolean | With `tag`: only the Tag itself, not its descendants. |
 
 **`Replacement`**: One exact-string replacement: `old` must occur exactly once in the Page.
 
 | Field | Type | Description |
 |---|---|---|
-| `new` | string |  |
 | `old` | string |  |
+| `new` | string |  |
 
 **`Scope`**: Which part of the Wiki a query covers (operations.md `Scope`).
 
 | Field | Type | Description |
 |---|---|---|
-| `path_prefix?` | string | Only Pages whose Page Path starts with this. |
 | `space?` | string | Only this Space: its home Page and everything under it. |
+| `path_prefix?` | string | Only Pages whose Page Path starts with this. |
 
 <!-- end generated -->

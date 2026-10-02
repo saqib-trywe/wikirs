@@ -15,12 +15,15 @@ wikirs-cli = { path = "crates/wikirs-cli" }
 wikirs-mcp = { path = "crates/wikirs-mcp" }
 wikirs-http = { path = "crates/wikirs-http" }
 wikirs-tui = { path = "crates/wikirs-tui" }
+wikirs-gui = { path = "crates/wikirs-gui" }
 anyhow = "1"
 clap = { version = "4.6", features = ["derive"] }
 rmcp = { version = "3.5", features = ["server", "transport-io"] }
 schemars = "1.2"
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# `preserve_order`: JSON keys and schema properties keep declaration order in
+# every build (gpui turns it on anyway, and builds must agree).
+serde_json = { version = "1", features = ["preserve_order"] }
 tempfile = "3"
 insta = { version = "1.48", features = ["json"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std"] }
@@ -45,6 +48,10 @@ assert_cmd = "2.2"
 proptest = "1"
 ratatui = "0.30"
 ratatui-textarea = "0.9"
+# Pinned exactly: gpui and gpui-kit break weekly (workspace.md). An upgrade is
+# one PR that moves both pins together.
+gpui-kit = { version = "=0.6.6", features = ["tree-sitter-markdown", "tree-sitter-markdown-inline"] }
+gpui = { package = "gpui-pre", version = "=0.3.6" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
@@ -62,10 +69,11 @@ publish.workspace = true
 license.workspace = true
 
 [features]
-default = ["mcp", "http", "tui"]
+default = ["mcp", "http", "tui", "gui"]
 mcp = ["dep:wikirs-mcp"]
 http = ["mcp", "dep:wikirs-http"]
 tui = ["dep:wikirs-tui"]
+gui = ["dep:wikirs-gui"]
 # Fault injection for tests (testing.md). Never enabled in release builds.
 test-hooks = ["wikirs-core/test-hooks"]
 
@@ -75,6 +83,7 @@ wikirs-cli.workspace = true
 wikirs-mcp = { workspace = true, optional = true }
 wikirs-http = { workspace = true, optional = true }
 wikirs-tui = { workspace = true, optional = true }
+wikirs-gui = { workspace = true, optional = true }
 clap.workspace = true
 serde_json.workspace = true
 

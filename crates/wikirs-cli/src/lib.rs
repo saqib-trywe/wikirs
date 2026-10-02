@@ -48,6 +48,11 @@ pub enum Top {
     },
     /// Serve the Wiki over HTTP (`/ops`) and MCP Streamable HTTP (`/mcp`).
     Serve(ServeArgs),
+    /// Open the desktop UI.
+    Gui {
+        /// Page Path to open first (else the first Page in the tree).
+        page: Option<String>,
+    },
     /// Open the terminal UI.
     Tui {
         /// Page Path to open first (else the first Page in the tree).
@@ -100,7 +105,7 @@ pub struct ServeArgs {
 const INPUT: &str = "input";
 const FAIL_ON_DIAGNOSTICS: &str = "fail_on_diagnostics";
 /// Subcommands that aren't Operations.
-const OURS: [&str; 6] = ["mcp", "serve", "tui", "config", "catalogue", "help"];
+const OURS: [&str; 7] = ["mcp", "serve", "tui", "gui", "config", "catalogue", "help"];
 
 /// A parsed command line. `command` is an error when `--input` doesn't hold a
 /// valid Input; it is printed like an Operation's error.

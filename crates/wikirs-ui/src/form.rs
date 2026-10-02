@@ -17,7 +17,7 @@ pub struct Form {
     pub op: &'static str,
     pub description: &'static str,
     pub kind: Kind,
-    /// Required fields first (in declaration order), then the rest by name.
+    /// Required fields first, then the rest, each in declaration order.
     pub fields: Vec<Field>,
     /// `Some` for Operations that take `dry_run`: whether to only show the Plan.
     pub dry_run: Option<bool>,
@@ -234,7 +234,7 @@ impl Reader {
                 control: self.control(prop, &path)?,
             });
         }
-        // `properties` is sorted by name; `required` keeps declaration order.
+        // Both keep declaration order (serde_json's `preserve_order`).
         fields.sort_by_key(|f| {
             required
                 .iter()

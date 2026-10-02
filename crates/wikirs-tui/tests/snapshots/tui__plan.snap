@@ -1,6 +1,6 @@
 ---
 source: crates/wikirs-tui/tests/tui.rs
-assertion_line: 408
+assertion_line: 442
 expression: fx.frame()
 ---
  wikirs   Engineering / Rust / Async notes
@@ -17,9 +17,9 @@ expression: fx.frame()
 │              │                                                                                        │              │
 │              │{                                                                                       │              │
 │              │  "from": "eng/rust/async",                                                             │              │
-│              │  "links_rewritten": 2,                                                                 │              │
+│              │  "to": "eng/async",                                                                    │              │
 │              │  "moved": 1,                                                                           │              │
-│              │  "to": "eng/async"                                                                     │              │
+│              │  "links_rewritten": 2                                                                  │              │
 │              │}                                                                                       │              │
 │              └────────────────────────────────────────────────────────────────────────────────────────┘              │
 │                          ││                                                        ││                                │
