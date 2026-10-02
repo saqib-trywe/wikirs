@@ -59,6 +59,13 @@ pub enum View {
     },
     Rule,
     Html(String),
+    /// A paragraph that is only an embed (`![[diagram.png]]`): drawn as the
+    /// image when `file` (an existing Attachment, from the Wiki root) is set.
+    Image {
+        link: Option<usize>,
+        url: String,
+        file: Option<String>,
+    },
 }
 
 /// The Page's blocks, then its footnotes (`[^label]` and their blocks).
@@ -105,7 +112,9 @@ impl Layout<'_> {
                 anchor: anchor.clone(),
                 text: self.rich(inlines),
             },
-            Block::Paragraph { inlines } => View::Paragraph(self.rich(inlines)),
+            Block::Paragraph { inlines } => self
+                .image(inlines)
+                .unwrap_or_else(|| View::Paragraph(self.rich(inlines))),
             Block::Quote { blocks } => View::Quote(blocks.iter().map(|b| self.block(b)).collect()),
             Block::Alert { kind, blocks } => View::Alert {
                 kind: *kind,
@@ -141,6 +150,29 @@ impl Layout<'_> {
             Block::Rule => View::Rule,
             Block::Html { html } => View::Html(html.trim_end_matches('\n').to_string()),
         }
+    }
+
+    /// A paragraph holding one image and nothing but whitespace.
+    fn image(&self, inlines: &[Inline]) -> Option<View> {
+        let mut images = inlines.iter().filter(|i| {
+            !matches!(i, Inline::Text { text } if text.trim().is_empty())
+                && !matches!(i, Inline::SoftBreak | Inline::HardBreak)
+        });
+        let (Some(Inline::Image { link, url, .. }), None) = (images.next(), images.next()) else {
+            return None;
+        };
+        let file = link
+            .and_then(|l| self.resolved.get(l).cloned().flatten())
+            .filter(|r| {
+                r.status == wikirs_core::links::LinkStatus::Ok
+                    && r.target_kind == wikirs_core::links::TargetKind::Attachment
+            })
+            .map(|r| r.target);
+        Some(View::Image {
+            link: *link,
+            url: url.clone(),
+            file,
+        })
     }
 
     fn rich(&self, inlines: &[Inline]) -> Rich {
@@ -315,5 +347,35 @@ mod tests {
         assert_eq!(views[6], View::Rule);
         assert_eq!(notes.len(), 1);
         assert_eq!(notes[0].0, "n");
+    }
+
+    #[test]
+    fn a_lone_embed_is_an_image_block() {
+        let attachment = Resolved {
+            target: "a/p.png".into(),
+            target_kind: TargetKind::Attachment,
+            heading: None,
+            status: LinkStatus::Ok,
+        };
+        let doc = document("![[a/p.png]]\n\n![[a/gone.png]]\n\ntext ![[a/p.png]]\n");
+        let gone = Resolved {
+            status: LinkStatus::Broken,
+            ..attachment.clone()
+        };
+        let (views, _) = layout(
+            &doc,
+            &[Some(attachment.clone()), Some(gone), Some(attachment)],
+        );
+        assert_eq!(
+            views[0],
+            View::Image {
+                link: Some(0),
+                url: "a/p.png".into(),
+                file: Some("a/p.png".into())
+            }
+        );
+        assert!(matches!(&views[1], View::Image { file: None, .. }));
+        // With other text it stays a placeholder in the paragraph.
+        assert!(matches!(&views[2], View::Paragraph(rich) if rich.text == "text [image: a/p.png]"));
     }
 }

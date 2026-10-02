@@ -4,7 +4,7 @@ A local-only, markdown-native wiki for one person across their machines. A Wiki 
 
 One binary, no daemon. Every Operation (create, move, link, tag, search, …) can be run identically from the CLI, the terminal UI, an HTTP API and an MCP server for AI agents. All of these are generated from one registry, so they can't drift apart.
 
-**Status:** all 32 Operations, the CLI, MCP, HTTP and the TUI are built. The desktop GUI shows and edits Pages; its palette, quick open and move dialog come next.
+**Status:** all 32 Operations and every Interface (CLI, TUI, GUI, HTTP and MCP) are built.
 
 ## What it does
 
@@ -58,7 +58,7 @@ wikirs tui
 | | Run | Notes |
 |---|---|---|
 | **CLI** | `wikirs <operation> …` | Subcommands are kebab-case (`move-page`). |
-| **GUI** | `wikirs gui [page]` | Pages and Tags trees, the rendered Page with clickable Links (a Broken Link offers to create its Page), and Backlinks/Links/Outline/Tags. ⌘E shows source and preview side by side, and ⌘S saves. See [gui.md](docs/spec/gui.md). |
+| **GUI** | `wikirs gui [page]` | Pages and Tags trees, the rendered Page with clickable Links (a Broken Link offers to create its Page), and Backlinks/Links/Outline/Tags. ⌘E shows source and preview side by side, ⌘S saves, ⌘K is the palette (dry runs show the Plan before Apply), ⌘P quick open; right-click a Page or Tag for move, rename and delete. See [gui.md](docs/spec/gui.md). |
 | **TUI** | `wikirs tui [page]` | Pages tree, rendered Page with numbered Links (type the number to follow one), Backlinks/Outline/Tags. `e` edits, `E` opens `$EDITOR`, `:` runs an Operation, ctrl-k is the palette. See [tui.md](docs/spec/tui.md). |
 | **MCP** | `wikirs mcp --wiki <path or name>` | stdio, for AI agents. Every Operation is a tool, Pages are resources, and changes arrive as notifications. Add `--read-only` to expose queries only. |
 | **HTTP** | `wikirs serve` | `POST /ops/<operation>` with a JSON Input, `GET /ops` for the catalogue, `GET /ops/watch` for change events (SSE), and MCP over HTTP at `/mcp`. Listens on localhost:4747 by default. See [http-security.md](docs/spec/http-security.md) for tokens and remote access. |

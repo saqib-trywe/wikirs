@@ -13,8 +13,9 @@ use gpui_kit::{
         ActiveTheme as _, Sizable as _,
         button::{Button, ButtonVariants},
         h_flex,
-        input::{Editor, EditorState, InputEvent},
+        input::{Editor, EditorState, InputEvent, InputState},
         list::ListItem,
+        menu::{ContextMenuExt as _, PopupMenuItem},
         resizable::{h_resizable, resizable_panel},
         tree::{TreeItem, TreeState, tree},
         v_flex,
@@ -29,7 +30,9 @@ use wikirs_core::{
 use wikirs_ui::{Followed, Notice, Session};
 
 use crate::{
+    form::outcome_view,
     layout::{self, View},
+    overlay::Overlay,
     page::PageRenderer,
 };
 
@@ -51,6 +54,12 @@ pub struct Workbench {
     scroll: ScrollHandle,
     /// Holds the keyboard focus when no input does, so ⌘S and ⌘E always work.
     focus: FocusHandle,
+    /// The palette, quick open, a Tag's Pages, or a form.
+    pub overlay: Option<Overlay>,
+    /// Every Page, for `[[` autocomplete.
+    pages: crate::completion::Pages,
+    /// The palette's and quick open's query.
+    pub(crate) query: Entity<InputState>,
     /// A file to open in the system viewer (tests read it instead).
     pub opened_externally: Option<std::path::PathBuf>,
     _subscriptions: Vec<Subscription>,
@@ -78,17 +87,34 @@ impl Workbench {
                 .soft_wrap(true)
                 .default_value(text)
         });
+        let pages: crate::completion::Pages = Rc::default();
+        editor.update(cx, |editor, cx| {
+            editor.lsp_mut().completion_provider =
+                Some(Rc::new(crate::completion::LinkCompletion {
+                    pages: pages.clone(),
+                }));
+            cx.notify();
+        });
         let page_tree = cx.new(|cx| TreeState::new(cx));
         let tag_tree = cx.new(|cx| TreeState::new(cx));
-        let subscriptions = vec![
-            cx.subscribe(&editor, |this, editor, event: &InputEvent, cx| {
-                if matches!(event, InputEvent::Change) {
-                    let text = editor.read(cx).value().to_string();
-                    this.session.set_buffer(text);
-                    cx.notify();
-                }
-            }),
-        ];
+        let query = cx.new(|cx| InputState::new(window, cx));
+        let subscriptions =
+            vec![
+                cx.subscribe(&editor, |this, editor, event: &InputEvent, cx| {
+                    if matches!(event, InputEvent::Change) {
+                        let text = editor.read(cx).value().to_string();
+                        this.session.set_buffer(text);
+                        cx.notify();
+                    }
+                }),
+                cx.subscribe_in(&query, window, |this, _, event: &InputEvent, window, cx| {
+                    match event {
+                        InputEvent::PressEnter { .. } => this.query_enter(window, cx),
+                        InputEvent::Change => cx.notify(),
+                        _ => {}
+                    }
+                }),
+            ];
         let poll = cx.spawn_in(window, async move |this, cx| {
             loop {
                 cx.background_executor().timer(POLL).await;
@@ -114,6 +140,9 @@ impl Workbench {
             compare: false,
             scroll: ScrollHandle::new(),
             focus,
+            overlay: None,
+            pages,
+            query,
             opened_externally: None,
             _subscriptions: subscriptions,
             _poll: watch.then_some(poll),
@@ -166,6 +195,43 @@ impl Workbench {
             .position(|view| anchors_in(view).contains(&anchor))
     }
 
+    /// Moves a Page before its previous sibling (`up`) or after its next one.
+    pub fn reorder(&mut self, path: &str, up: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let parent = |p: &str| {
+            p.rsplit_once('/')
+                .map_or(String::new(), |(d, _)| d.to_string())
+        };
+        let siblings: Vec<&str> = self
+            .session
+            .tree
+            .iter()
+            .filter(|r| parent(&r.path) == parent(path))
+            .map(|r| r.path.as_str())
+            .collect();
+        let Some(i) = siblings.iter().position(|p| *p == path) else {
+            return;
+        };
+        let input = if up {
+            i.checked_sub(1)
+                .map(|j| serde_json::json!({ "page": path, "before": siblings[j] }))
+        } else {
+            siblings
+                .get(i + 1)
+                .map(|next| serde_json::json!({ "page": path, "after": next }))
+        };
+        if let Some(input) = input
+            && let Err(err) = self.session.run_json("reorder_page", input)
+        {
+            self.session.notice = Some(Notice::Error(err.message));
+        }
+        self.changed(window, cx);
+    }
+
+    /// Gives the keyboard focus back to the Workbench (so its keys work).
+    pub fn focus_view(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.focus.focus(window, cx);
+    }
+
     /// Puts the keyboard focus in the source editor.
     pub fn focus_editor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.editor
@@ -210,6 +276,13 @@ impl Workbench {
     }
 
     fn refresh_trees(&mut self, cx: &mut Context<Self>) {
+        *self.pages.borrow_mut() = self
+            .session
+            .tree
+            .iter()
+            .filter(|r| !r.placeholder)
+            .map(|r| (r.path.clone(), r.title.clone()))
+            .collect();
         let pages = page_items(&self.session.tree);
         self.page_tree
             .update(cx, |tree, cx| tree.set_items(pages, cx));
@@ -279,16 +352,24 @@ impl Workbench {
                             .selected(selected || is_current)
                             .child(
                                 div()
+                                    .id(SharedString::from(format!("row-{id}")))
+                                    .w_full()
                                     .text_sm()
                                     .when(placeholder, |d| {
                                         d.italic().text_color(cx.theme().muted_foreground)
                                     })
-                                    .child(item.label.clone()),
+                                    .child(item.label.clone())
+                                    .context_menu({
+                                        let (view, id) = (view.clone(), id.clone());
+                                        move |menu, _, _| row_menu(menu, &view, &id)
+                                    }),
                             )
                             .on_click({
                                 let view = view.clone();
                                 move |_, window, cx| {
-                                    if id.starts_with("tag:") {
+                                    if let Some(tag) = id.strip_prefix("tag:") {
+                                        let tag = tag.to_string();
+                                        view.update(cx, |this, cx| this.show_tag(&tag, cx));
                                         return;
                                     }
                                     view.update(cx, |this, cx| {
@@ -423,34 +504,22 @@ impl Workbench {
         if !self.compare {
             return None;
         }
-        let theme = cx.theme();
         let mine = self
             .session
             .page
             .as_ref()
             .map(|p| p.buffer.clone())
             .unwrap_or_default();
-        let column = |title: &'static str, text: String| {
-            v_flex()
-                .flex_1()
-                .p_2()
-                .border_1()
-                .border_color(theme.border)
-                .child(section(title, cx))
-                .child(
-                    div()
-                        .font_family(theme.mono_font_family.clone())
-                        .text_xs()
-                        .child(text),
-                )
-        };
+        // What changed on disk, against mine: `-` only mine, `+` only on disk.
+        let diff = wikirs_ui::outcome::diff_lines(&mine, disk);
         Some(
-            h_flex()
-                .h(px(240.))
-                .gap_2()
+            v_flex()
+                .id("compare")
+                .max_h(px(260.))
+                .overflow_y_scroll()
                 .p_2()
-                .child(column("Mine (unsaved)", mine))
-                .child(column("On disk", disk.clone()))
+                .child(section("Mine (−) against on disk (+)", cx))
+                .child(outcome_view(&diff, cx))
                 .into_any_element(),
         )
     }
@@ -465,9 +534,12 @@ impl Workbench {
         };
         let (views, notes) = layout::layout(&page.doc, &page.resolved);
         let view = cx.entity();
-        let mut renderer = PageRenderer::new(Rc::new(move |link, window, cx| {
-            view.update(cx, |this, cx| this.follow(link, window, cx));
-        }));
+        let mut renderer = PageRenderer::new(
+            Rc::new(move |link, window, cx| {
+                view.update(cx, |this, cx| this.follow(link, window, cx));
+            }),
+            self.session.wiki().root().to_path_buf(),
+        );
         let mut blocks = renderer.views(&views, cx);
         if !notes.is_empty() {
             blocks.push(
@@ -612,14 +684,31 @@ impl Render for Workbench {
         let sidebar = self.sidebar(cx);
         let centre = self.centre(cx);
         let right = self.right(cx);
+        let overlay = self.overlay_view(cx);
         div()
             .id("workbench")
+            .relative()
             .key_context("Workbench")
             .track_focus(&self.focus)
             .size_full()
             .bg(cx.theme().background)
             .text_color(cx.theme().foreground)
             .on_action(cx.listener(|this, _: &Save, window, cx| this.save(window, cx)))
+            .on_action(
+                cx.listener(|this, _: &crate::overlay::OpenPalette, window, cx| {
+                    this.open_palette(window, cx);
+                }),
+            )
+            .on_action(
+                cx.listener(|this, _: &crate::overlay::QuickOpen, window, cx| {
+                    this.open_quick_open(window, cx);
+                }),
+            )
+            .on_action(
+                cx.listener(|this, _: &crate::overlay::CloseOverlay, window, cx| {
+                    this.close_overlay(window, cx);
+                }),
+            )
             .on_action(cx.listener(|this, _: &ToggleSource, _, cx| {
                 this.source = !this.source;
                 cx.notify();
@@ -630,7 +719,92 @@ impl Render for Workbench {
                     .child(resizable_panel().child(centre))
                     .child(resizable_panel().size(px(260.)).child(right)),
             )
+            .children(overlay)
     }
+}
+
+/// What a context-menu item does to the Workbench.
+type MenuAction = Box<dyn Fn(&mut Workbench, &mut Window, &mut Context<Workbench>)>;
+
+/// A tree row's context menu (gui.md#custom-ui-beyond-the-palette). Moves,
+/// renames and deletes open their form as a dry run, so the Plan shows first.
+fn row_menu(
+    menu: gpui_kit::component::menu::PopupMenu,
+    view: &Entity<Workbench>,
+    id: &str,
+) -> gpui_kit::component::menu::PopupMenu {
+    let item = |label: &'static str, act: MenuAction| {
+        let view = view.clone();
+        PopupMenuItem::new(label).on_click(move |_, window, cx| {
+            view.update(cx, |this, cx| act(this, window, cx));
+        })
+    };
+    if let Some(tag) = id.strip_prefix("tag:") {
+        let tag = tag.to_string();
+        return menu.item(item(
+            "Rename Tag…",
+            Box::new(move |this, window, cx| {
+                this.open_form(
+                    "rename_tag",
+                    &serde_json::json!({ "from": tag, "to": tag }),
+                    window,
+                    cx,
+                );
+            }),
+        ));
+    }
+    let placeholder = id.starts_with("placeholder:");
+    let path = id.trim_start_matches("placeholder:").to_string();
+    let p = path.clone();
+    let mut menu = if placeholder {
+        menu.item(item(
+            "Create Page",
+            Box::new(move |this, window, cx| this.create(&p, window, cx)),
+        ))
+    } else {
+        menu.item(item(
+            "New Child Page…",
+            Box::new(move |this, window, cx| {
+                this.open_form(
+                    "create_page",
+                    &serde_json::json!({ "parent": p }),
+                    window,
+                    cx,
+                );
+            }),
+        ))
+    };
+    let p = path.clone();
+    menu = menu.item(item(
+        "Move / Rename…",
+        Box::new(move |this, window, cx| {
+            this.open_form(
+                "move_page",
+                &serde_json::json!({ "from": p, "to": p }),
+                window,
+                cx,
+            );
+        }),
+    ));
+    if placeholder {
+        return menu;
+    }
+    let (p, up, down) = (path.clone(), path.clone(), path);
+    menu.item(item(
+        "Delete…",
+        Box::new(move |this, window, cx| {
+            this.open_form("delete_page", &serde_json::json!({ "page": p }), window, cx);
+        }),
+    ))
+    .item(PopupMenuItem::separator())
+    .item(item(
+        "Move Up",
+        Box::new(move |this, window, cx| this.reorder(&up, true, window, cx)),
+    ))
+    .item(item(
+        "Move Down",
+        Box::new(move |this, window, cx| this.reorder(&down, false, window, cx)),
+    ))
 }
 
 fn section(title: &str, cx: &App) -> Div {

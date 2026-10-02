@@ -9,7 +9,10 @@
 // gpui is written against its prelude: `use gpui_kit::*`.
 #![allow(clippy::wildcard_imports)]
 
+pub mod completion;
+pub mod form;
 pub mod layout;
+pub mod overlay;
 pub mod page;
 pub mod workbench;
 
@@ -18,11 +21,15 @@ use wikirs_core::Wiki;
 
 pub use workbench::Workbench;
 
-/// Binds the Workbench's keys: ⌘S / ctrl-S saves, ⌘E / ctrl-E toggles source.
+/// Binds the Workbench's keys (⌘ on macOS, ctrl elsewhere): S saves, E toggles
+/// source, K opens the palette, P quick open; Escape closes an overlay.
 pub fn bind_keys(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("secondary-s", workbench::Save, None),
         KeyBinding::new("secondary-e", workbench::ToggleSource, None),
+        KeyBinding::new("secondary-k", overlay::OpenPalette, None),
+        KeyBinding::new("secondary-p", overlay::QuickOpen, None),
+        KeyBinding::new("escape", overlay::CloseOverlay, Some("Workbench")),
     ]);
 }
 

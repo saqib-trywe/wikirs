@@ -9179,8 +9179,10 @@ dependencies = [
 name = "wikirs-gui"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "gpui-kit",
  "gpui-pre",
+ "lsp-types",
  "serde_json",
  "tempfile",
  "wikirs-core",
@@ -9238,6 +9240,7 @@ name = "wikirs-ui"
 version = "0.1.0"
 dependencies = [
  "serde_json",
+ "similar",
  "tempfile",
  "wikirs-core",
 ]

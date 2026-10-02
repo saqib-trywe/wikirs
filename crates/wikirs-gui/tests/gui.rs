@@ -239,3 +239,207 @@ fn clicking_link_text_in_the_page_follows_it(cx: &mut TestAppContext) {
     cx.run_until_parked();
     assert_eq!(fx.path(cx), "b");
 }
+
+// ------------------------------------------------------------------ overlays
+
+fn overlay_kind(fx: &Fixture, cx: &mut VisualTestContext) -> &'static str {
+    use wikirs_gui::overlay::Overlay;
+    fx.view.read_with(cx, |wb, _| match &wb.overlay {
+        None => "none",
+        Some(Overlay::Palette) => "palette",
+        Some(Overlay::QuickOpen { .. }) => "quick open",
+        Some(Overlay::TagPages { .. }) => "tag pages",
+        Some(Overlay::Form(_)) => "form",
+    })
+}
+
+#[gpui::test]
+fn palette_form_shows_the_plan_then_applies_it(cx: &mut TestAppContext) {
+    let (fx, cx) = setup(cx);
+    cx.simulate_keystrokes("secondary-k");
+    cx.run_until_parked();
+    assert_eq!(overlay_kind(&fx, cx), "palette");
+    cx.simulate_input("move_page");
+    cx.simulate_keystrokes("enter");
+    cx.run_until_parked();
+    assert_eq!(overlay_kind(&fx, cx), "form");
+    // `from` is filled with the open Page; type `to`.
+    let to = fx.view.read_with(cx, |wb, _| match &wb.overlay {
+        Some(wikirs_gui::overlay::Overlay::Form(panel)) => panel.field_input("to").unwrap(),
+        _ => unreachable!(),
+    });
+    to.update_in(cx, |input, window, cx| input.focus(window, cx));
+    cx.simulate_input("z");
+    fx.view
+        .update_in(cx, |wb, window, cx| wb.run_form(false, window, cx));
+    cx.run_until_parked();
+    let (outcome, apply) = fx.view.read_with(cx, |wb, _| match &wb.overlay {
+        Some(wikirs_gui::overlay::Overlay::Form(panel)) => {
+            (panel.outcome.clone().unwrap(), panel.apply.clone())
+        }
+        _ => unreachable!(),
+    });
+    assert_eq!(outcome[0].text, "Dry run, nothing written (a: apply):");
+    assert!(
+        outcome.iter().any(|l| l.text == "  move a.md → z.md"),
+        "{outcome:?}"
+    );
+    assert!(fx.file("a").exists(), "a dry run writes nothing");
+    assert_eq!(apply.unwrap()["dry_run"], false);
+    fx.view
+        .update_in(cx, |wb, window, cx| wb.run_form(true, window, cx));
+    cx.run_until_parked();
+    assert!(fx.file("z").exists());
+    assert_eq!(fx.path(cx), "z", "the open Page follows its move");
+    cx.simulate_keystrokes("escape");
+    cx.run_until_parked();
+    assert_eq!(overlay_kind(&fx, cx), "none");
+}
+
+#[gpui::test]
+fn a_form_shows_field_errors_and_operation_errors(cx: &mut TestAppContext) {
+    use wikirs_gui::overlay::Overlay;
+    let (fx, cx) = setup(cx);
+    // A bad entry: shown next to its field, nothing runs.
+    fx.view.update_in(cx, |wb, window, cx| {
+        wb.open_form("list_pages", &json!({}), window, cx);
+    });
+    let limit = fx.view.read_with(cx, |wb, _| match &wb.overlay {
+        Some(Overlay::Form(panel)) => panel.field_input("limit").unwrap(),
+        _ => unreachable!(),
+    });
+    limit.update_in(cx, |input, window, cx| input.focus(window, cx));
+    cx.simulate_input("ten");
+    fx.view
+        .update_in(cx, |wb, window, cx| wb.run_form(false, window, cx));
+    cx.run_until_parked();
+    fx.view.read_with(cx, |wb, _| match &wb.overlay {
+        Some(Overlay::Form(panel)) => {
+            assert_eq!(panel.errors[0].path, "limit");
+            assert!(panel.outcome.is_none());
+        }
+        _ => unreachable!(),
+    });
+    // A valid Input the Operation refuses: its error is the outcome.
+    fx.view.update_in(cx, |wb, window, cx| {
+        wb.open_form(
+            "rename_tag",
+            &json!({ "from": "nope", "to": "x" }),
+            window,
+            cx,
+        );
+        wb.run_form(false, window, cx);
+    });
+    cx.run_until_parked();
+    fx.view.read_with(cx, |wb, _| match &wb.overlay {
+        Some(Overlay::Form(panel)) => {
+            let outcome = panel.outcome.as_ref().unwrap();
+            assert_eq!(
+                outcome[0].kind,
+                wikirs_ui::outcome::Kind::Error,
+                "{outcome:?}"
+            );
+            assert!(panel.apply.is_none());
+        }
+        _ => unreachable!(),
+    });
+}
+
+#[gpui::test]
+fn quick_open_by_path_title_or_text(cx: &mut TestAppContext) {
+    let (fx, cx) = setup(cx);
+    cx.simulate_keystrokes("secondary-p");
+    cx.run_until_parked();
+    assert_eq!(overlay_kind(&fx, cx), "quick open");
+    cx.simulate_input("c/d");
+    cx.simulate_keystrokes("enter");
+    cx.run_until_parked();
+    assert_eq!(fx.path(cx), "c/d");
+    assert_eq!(overlay_kind(&fx, cx), "none");
+    // Search finds Pages by their text.
+    cx.simulate_keystrokes("secondary-p");
+    cx.simulate_input("back");
+    cx.run_until_parked();
+    let items = fx
+        .view
+        .read_with(cx, wikirs_gui::Workbench::quick_open_items);
+    assert_eq!(items.first().map(|i| i.0.as_str()), Some("b"), "{items:?}");
+}
+
+#[gpui::test]
+fn a_tag_lists_its_pages_and_reorder_moves_a_page(cx: &mut TestAppContext) {
+    let (fx, cx) = setup(cx);
+    fx.view.update_in(cx, |wb, _, cx| wb.show_tag("topic", cx));
+    cx.run_until_parked();
+    let pages = fx.view.read_with(cx, |wb, _| match &wb.overlay {
+        Some(wikirs_gui::overlay::Overlay::TagPages { pages, .. }) => pages.clone(),
+        _ => unreachable!(),
+    });
+    assert_eq!(pages, [("b".to_string(), "B".to_string())]);
+
+    let roots = |fx: &Fixture, cx: &mut VisualTestContext| {
+        fx.view.read_with(cx, |wb, _| {
+            wb.session
+                .tree
+                .iter()
+                .filter(|r| r.depth == 0)
+                .map(|r| r.path.clone())
+                .collect::<Vec<_>>()
+        })
+    };
+    assert_eq!(roots(&fx, cx), ["a", "b", "c", "e"]);
+    fx.view
+        .update_in(cx, |wb, window, cx| wb.reorder("b", true, window, cx));
+    cx.run_until_parked();
+    assert_eq!(roots(&fx, cx), ["b", "a", "c", "e"]);
+    fx.view
+        .update_in(cx, |wb, window, cx| wb.reorder("b", false, window, cx));
+    cx.run_until_parked();
+    assert_eq!(roots(&fx, cx), ["a", "b", "c", "e"]);
+    // `e`'s previous sibling is `c`, not the row above it (`c/d`).
+    fx.view
+        .update_in(cx, |wb, window, cx| wb.reorder("e", true, window, cx));
+    cx.run_until_parked();
+    assert_eq!(roots(&fx, cx), ["a", "b", "e", "c"]);
+}
+
+#[gpui::test]
+fn compare_shows_a_diff(cx: &mut TestAppContext) {
+    let (fx, cx) = setup(cx);
+    fx.view
+        .update_in(cx, |wb, _, _| wb.session.set_buffer("mine\n".into()));
+    std::fs::write(fx.file("a"), "theirs\n").unwrap();
+    fx.view.update_in(cx, |wb, window, cx| {
+        wb.session.save();
+        wb.compare = true;
+        wb.changed(window, cx);
+    });
+    cx.run_until_parked();
+    assert!(
+        cx.debug_bounds("diff-line-0").is_some(),
+        "the diff is drawn"
+    );
+}
+
+#[gpui::test]
+fn a_list_field_takes_comma_separated_items(cx: &mut TestAppContext) {
+    use wikirs_gui::overlay::Overlay;
+    let (fx, cx) = setup(cx);
+    fx.view.update_in(cx, |wb, window, cx| {
+        wb.open_form("tag_page", &json!({ "page": "a" }), window, cx);
+    });
+    let tags = fx.view.read_with(cx, |wb, _| match &wb.overlay {
+        Some(Overlay::Form(panel)) => panel.field_input("tags").unwrap(),
+        _ => unreachable!(),
+    });
+    tags.update_in(cx, |input, window, cx| input.focus(window, cx));
+    cx.simulate_input("x, y/z");
+    fx.view
+        .update_in(cx, |wb, window, cx| wb.run_form(false, window, cx));
+    cx.run_until_parked();
+    let input = fx.view.read_with(cx, |wb, _| match &wb.overlay {
+        Some(Overlay::Form(panel)) => panel.form.input().unwrap(),
+        _ => unreachable!(),
+    });
+    assert_eq!(input["tags"], json!(["x", "y/z"]));
+}

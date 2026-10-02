@@ -19,13 +19,16 @@ pub type OnLink = Rc<dyn Fn(usize, &mut Window, &mut App)>;
 /// Builds elements; `ids` keeps every interactive text's id unique.
 pub struct PageRenderer {
     on_link: OnLink,
+    /// The Wiki root, which Attachment paths are relative to.
+    root: std::path::PathBuf,
     next_id: usize,
 }
 
 impl PageRenderer {
-    pub fn new(on_link: OnLink) -> Self {
+    pub fn new(on_link: OnLink, root: std::path::PathBuf) -> Self {
         Self {
             on_link,
+            root,
             next_id: 0,
         }
     }
@@ -61,31 +64,7 @@ impl PageRenderer {
                 .text_color(theme.muted_foreground)
                 .children(self.views(children, cx))
                 .into_any_element(),
-            View::Alert { kind, children } => {
-                let color = match kind {
-                    AlertKind::Note => theme.info,
-                    AlertKind::Tip => theme.success,
-                    AlertKind::Important => theme.primary,
-                    AlertKind::Warning => theme.warning,
-                    AlertKind::Caution => theme.danger,
-                };
-                v_flex()
-                    .my_2()
-                    .p_2()
-                    .border_l_4()
-                    .border_color(color)
-                    .bg(theme.secondary)
-                    .rounded_md()
-                    .child(
-                        div()
-                            .text_xs()
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(color)
-                            .child(kind.label()),
-                    )
-                    .children(self.views(children, cx))
-                    .into_any_element()
-            }
+            View::Alert { kind, children } => self.alert(*kind, children, cx),
             View::List(items) => v_flex()
                 .my_1()
                 .children(items.iter().map(|(marker, blocks)| {
@@ -115,6 +94,31 @@ impl PageRenderer {
                 .into_any_element(),
             View::Table { align, head, rows } => self.table(align, head, rows, cx),
             View::Rule => div().my_3().h(px(1.)).bg(theme.border).into_any_element(),
+            View::Image { link, url, file } => {
+                let shown: AnyElement = match file {
+                    Some(file) => img(file
+                        .split('/')
+                        .fold(self.root.clone(), |p, seg| p.join(seg)))
+                    .max_w_full()
+                    .into_any_element(),
+                    None => div()
+                        .text_sm()
+                        .text_color(theme.danger)
+                        .child(format!("[image: {url}] (missing)"))
+                        .into_any_element(),
+                };
+                self.next_id += 1;
+                let on_link = self.on_link.clone();
+                div()
+                    .id(("image", self.next_id))
+                    .my_2()
+                    .when_some(*link, |d, link| {
+                        d.cursor_pointer()
+                            .on_click(move |_, window, cx| on_link(link, window, cx))
+                    })
+                    .child(shown)
+                    .into_any_element()
+            }
             View::Html(html) => div()
                 .my_1()
                 .font_family(theme.mono_font_family.clone())
@@ -123,6 +127,33 @@ impl PageRenderer {
                 .child(html.clone())
                 .into_any_element(),
         }
+    }
+
+    fn alert(&mut self, kind: AlertKind, children: &[View], cx: &App) -> AnyElement {
+        let theme = cx.theme();
+        let color = match kind {
+            AlertKind::Note => theme.info,
+            AlertKind::Tip => theme.success,
+            AlertKind::Important => theme.primary,
+            AlertKind::Warning => theme.warning,
+            AlertKind::Caution => theme.danger,
+        };
+        v_flex()
+            .my_2()
+            .p_2()
+            .border_l_4()
+            .border_color(color)
+            .bg(theme.secondary)
+            .rounded_md()
+            .child(
+                div()
+                    .text_xs()
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(color)
+                    .child(kind.label()),
+            )
+            .children(self.views(children, cx))
+            .into_any_element()
     }
 
     fn table(

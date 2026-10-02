@@ -41,13 +41,22 @@ This is the banner from the prototype (Reload / Keep mine / Compare). In the rea
 
 ## As built
 
-`wikirs gui [page]` (crate `wikirs-gui`, gpui-kit `=0.6.6`) drives the same open-Page `Session` as the TUI (`wikirs-ui`):
-- ⌘S and ⌘E are ctrl-S and ctrl-E on Linux and Windows.
-- Clicking a Placeholder in the tree, or a Broken Link, shows a banner with "Create it".
-- Following a `[[page#heading]]` Link scrolls to the heading.
+`wikirs gui [page]` (crate `wikirs-gui`, gpui-kit `=0.6.6`) drives the same open-Page `Session` as the TUI (`wikirs-ui`). ⌘ is ctrl on Linux and Windows.
+- **Keys**: ⌘S saves, ⌘E toggles source and preview, ⌘K opens the palette, ⌘P quick open; Escape closes an overlay.
+- **Palette forms** come from `wikirs-ui`'s form model, with one row per value and records you can add to. A mutation opens as a dry run: Run shows the Plan (each splice as `-old` / `+new`), and Apply writes it. These forms are also the move/rename, delete, new-Page and rename-Tag dialogs.
+- **Context menus**:
+  - a Page row: New Child Page, Move / Rename, Delete, Move Up / Down;
+  - a Placeholder row: Create Page, Move / Rename;
+  - a Tag row: Rename Tag.
+- Clicking a Tag lists its Pages (`list_pages{tag}`).
+- Quick open matches path or Title, then adds full-text search hits.
+- **Changed on disk**: Compare is a line diff, mine (−) against disk (+).
+- **Links**:
+  - Following `[[page#heading]]` scrolls to the heading.
+  - A Placeholder or Broken Link shows "Create it".
+  - A paragraph that is only an embedded Attachment shows the image, and clicking it opens the file.
+- **Editor**: `[[` autocompletes Page Paths and Titles.
 - Watch events are taken in every 250 ms on the UI thread.
-
-Still to come (the next slice): the ⌘K palette, ⌘P quick open and search, the move dialog with its Plan, the tree's context menu, `[[` autocomplete, a real diff for Compare, Tag → Pages, and inline images.
 
 ## Rendering work the build needs
 

@@ -180,6 +180,53 @@ impl Form {
     }
 }
 
+/// One step of a [`Row`]'s path: a field, or a record of a [`Control::Records`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Step {
+    Field(usize),
+    Record(usize),
+}
+
+/// One editable value (or a group's or records' header), as a UI lists them:
+/// groups and records indent their fields under a header row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Row {
+    pub path: Vec<Step>,
+    pub label: String,
+    /// Where [`Form::input`]'s errors for this row point, e.g. `edits[0].old`.
+    pub error_path: String,
+    pub depth: usize,
+}
+
+impl Form {
+    /// Every row, depth first.
+    #[must_use]
+    pub fn rows(&self) -> Vec<Row> {
+        rows_of(&self.fields)
+    }
+
+    /// The field and control at `path`.
+    #[must_use]
+    pub fn at(&self, path: &[Step]) -> Option<(&Field, &Control)> {
+        field_at(&self.fields, path)
+    }
+
+    pub fn control_mut(&mut self, path: &[Step]) -> Option<&mut Control> {
+        control_mut(&mut self.fields, path)
+    }
+
+    /// Adds a blank record to the [`Control::Records`] that `path` is in (or is).
+    pub fn push_record(&mut self, path: &[Step]) {
+        let records = path
+            .iter()
+            .position(|s| matches!(s, Step::Record(_)))
+            .map_or(path, |i| &path[..i]);
+        if let Some(control) = self.control_mut(records) {
+            control.push();
+        }
+    }
+}
+
 impl Field {
     /// The name as a label: `base_version` → `base version`.
     #[must_use]
@@ -502,6 +549,79 @@ fn list_item(item: &Item, text: &str) -> Result<Value, String> {
                 Err(format!("`{text}` isn't one of {}", names.join(", ")))
             }
         }
+    }
+}
+
+// ------------------------------------------------------------------ rows
+
+fn rows_of(fields: &[Field]) -> Vec<Row> {
+    let mut out = Vec::new();
+    collect_rows(fields, &[], "", 0, &mut out);
+    out
+}
+
+fn collect_rows(fields: &[Field], path: &[Step], prefix: &str, depth: usize, out: &mut Vec<Row>) {
+    for (i, field) in fields.iter().enumerate() {
+        let mut here = path.to_vec();
+        here.push(Step::Field(i));
+        let error_path = if prefix.is_empty() {
+            field.name.clone()
+        } else {
+            format!("{prefix}.{}", field.name)
+        };
+        out.push(Row {
+            path: here.clone(),
+            label: field.label(),
+            error_path: error_path.clone(),
+            depth,
+        });
+        match &field.control {
+            Control::Group(inner) => collect_rows(inner, &here, &error_path, depth + 1, out),
+            Control::Records { records, .. } => {
+                for (r, record) in records.iter().enumerate() {
+                    let mut at = here.clone();
+                    at.push(Step::Record(r));
+                    collect_rows(record, &at, &format!("{error_path}[{r}]"), depth + 1, out);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn field_at<'a>(fields: &'a [Field], path: &[Step]) -> Option<(&'a Field, &'a Control)> {
+    let (Step::Field(i), rest) = path.split_first()? else {
+        return None;
+    };
+    let field = fields.get(*i)?;
+    match rest {
+        [] => Some((field, &field.control)),
+        [Step::Record(r), rest @ ..] => match &field.control {
+            Control::Records { records, .. } => field_at(records.get(*r)?, rest),
+            _ => None,
+        },
+        rest => match &field.control {
+            Control::Group(inner) => field_at(inner, rest),
+            _ => None,
+        },
+    }
+}
+
+fn control_mut<'a>(fields: &'a mut [Field], path: &[Step]) -> Option<&'a mut Control> {
+    let (Step::Field(i), rest) = path.split_first()? else {
+        return None;
+    };
+    let field = fields.get_mut(*i)?;
+    match rest {
+        [] => Some(&mut field.control),
+        [Step::Record(r), rest @ ..] => match &mut field.control {
+            Control::Records { records, .. } => control_mut(records.get_mut(*r)?, rest),
+            _ => None,
+        },
+        rest => match &mut field.control {
+            Control::Group(inner) => control_mut(inner, rest),
+            _ => None,
+        },
     }
 }
 

@@ -8,7 +8,7 @@ use ratatui::{
     text::{Line, Span},
 };
 use serde_json::Value;
-use wikirs_ui::{Control, Field, FieldError, Form};
+use wikirs_ui::{Control, FieldError, Form};
 
 /// A form being filled in.
 pub struct FormView {
@@ -26,19 +26,6 @@ pub enum FormAction {
     Submit(Value),
 }
 
-#[derive(Clone, Copy)]
-enum Step {
-    Field(usize),
-    Record(usize),
-}
-
-struct Row {
-    path: Vec<Step>,
-    label: String,
-    error_path: String,
-    depth: usize,
-}
-
 impl FormView {
     #[must_use]
     pub fn new(form: Form) -> Self {
@@ -51,7 +38,7 @@ impl FormView {
 
     pub fn key(&mut self, key: KeyEvent) -> FormAction {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
-        let rows = rows(&self.form.fields);
+        let rows = self.form.rows();
         let path = rows.get(self.selected).map(|r| r.path.clone());
         match key.code {
             KeyCode::Esc => return FormAction::Close,
@@ -67,13 +54,7 @@ impl FormView {
             KeyCode::Char('n') if ctrl => {
                 // Adds a record to the Records the cursor is in.
                 if let Some(path) = path {
-                    let records = path
-                        .iter()
-                        .position(|s| matches!(s, Step::Record(_)))
-                        .map_or(path.as_slice(), |i| &path[..i]);
-                    if let Some(control) = control_mut(&mut self.form.fields, records) {
-                        control.push();
-                    }
+                    self.form.push_record(&path);
                 }
             }
             KeyCode::Down | KeyCode::Tab => {
@@ -81,7 +62,7 @@ impl FormView {
             }
             KeyCode::Up | KeyCode::BackTab => self.selected = self.selected.saturating_sub(1),
             code => {
-                if let Some(control) = path.and_then(|p| control_mut(&mut self.form.fields, &p)) {
+                if let Some(control) = path.and_then(|p| self.form.control_mut(&p)) {
                     edit(control, code);
                 }
             }
@@ -100,7 +81,7 @@ impl FormView {
             Line::from(self.form.description).dim(),
             Line::default(),
         ];
-        let rows = rows(&self.form.fields);
+        let rows = self.form.rows();
         let width = rows
             .iter()
             .map(|r| r.label.len() + 2 * r.depth)
@@ -108,7 +89,7 @@ impl FormView {
             .unwrap_or(0)
             .max(7);
         for (i, row) in rows.iter().enumerate() {
-            let Some((field, control)) = field_at(&self.form.fields, &row.path) else {
+            let Some((field, control)) = self.form.at(&row.path) else {
                 continue;
             };
             let active = i == self.selected;
@@ -162,77 +143,6 @@ impl FormView {
     #[must_use]
     pub fn height(&self) -> usize {
         self.lines().len()
-    }
-}
-
-fn rows(fields: &[Field]) -> Vec<Row> {
-    let mut out = Vec::new();
-    collect_rows(fields, &[], "", 0, &mut out);
-    out
-}
-
-fn collect_rows(fields: &[Field], path: &[Step], prefix: &str, depth: usize, out: &mut Vec<Row>) {
-    for (i, field) in fields.iter().enumerate() {
-        let mut here = path.to_vec();
-        here.push(Step::Field(i));
-        let error_path = if prefix.is_empty() {
-            field.name.clone()
-        } else {
-            format!("{prefix}.{}", field.name)
-        };
-        out.push(Row {
-            path: here.clone(),
-            label: field.label(),
-            error_path: error_path.clone(),
-            depth,
-        });
-        match &field.control {
-            Control::Group(inner) => collect_rows(inner, &here, &error_path, depth + 1, out),
-            Control::Records { records, .. } => {
-                for (r, record) in records.iter().enumerate() {
-                    let mut at = here.clone();
-                    at.push(Step::Record(r));
-                    collect_rows(record, &at, &format!("{error_path}[{r}]"), depth + 1, out);
-                }
-            }
-            _ => {}
-        }
-    }
-}
-
-fn field_at<'a>(fields: &'a [Field], path: &[Step]) -> Option<(&'a Field, &'a Control)> {
-    let (Step::Field(i), rest) = path.split_first()? else {
-        return None;
-    };
-    let field = fields.get(*i)?;
-    match rest {
-        [] => Some((field, &field.control)),
-        [Step::Record(r), rest @ ..] => match &field.control {
-            Control::Records { records, .. } => field_at(records.get(*r)?, rest),
-            _ => None,
-        },
-        rest => match &field.control {
-            Control::Group(inner) => field_at(inner, rest),
-            _ => None,
-        },
-    }
-}
-
-fn control_mut<'a>(fields: &'a mut [Field], path: &[Step]) -> Option<&'a mut Control> {
-    let (Step::Field(i), rest) = path.split_first()? else {
-        return None;
-    };
-    let field = fields.get_mut(*i)?;
-    match rest {
-        [] => Some(&mut field.control),
-        [Step::Record(r), rest @ ..] => match &mut field.control {
-            Control::Records { records, .. } => control_mut(records.get_mut(*r)?, rest),
-            _ => None,
-        },
-        rest => match &mut field.control {
-            Control::Group(inner) => control_mut(inner, rest),
-            _ => None,
-        },
     }
 }
 

@@ -596,6 +596,25 @@ impl Session {
         .unwrap_or_default()
     }
 
+    /// The Pages carrying `tag` or one of its descendants, as `(path, title)`.
+    #[must_use]
+    pub fn pages_with_tag(&self, tag: &str) -> Vec<(String, String)> {
+        ListPages::run(
+            &self.wiki,
+            ListPagesInput {
+                filter: Filter {
+                    tag: Some(tag.to_string()),
+                    ..Filter::default()
+                },
+                sort: Sort::default(),
+                limit: Some(u32::MAX),
+                offset: None,
+            },
+        )
+        .map(|out| out.pages.into_iter().map(|p| (p.path, p.title)).collect())
+        .unwrap_or_default()
+    }
+
     /// Full-text search: `(path, title, snippet)`; none for a blank query.
     #[must_use]
     pub fn search(&self, text: &str) -> Vec<(String, String, String)> {
