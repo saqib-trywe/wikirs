@@ -211,20 +211,28 @@ impl Index {
             .conn
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|e| db_err(&e))?;
+        // Whether anything really changed: a racy file that hashes the same
+        // and is still racy leaves the Index as it was.
+        let mut dirty = !removed.is_empty() || skipped_now != old_skipped;
         for path in changed {
             let file = &scanned[path];
             let Ok(bytes) = fs::read(root.join(path)) else {
                 continue; // vanished mid-scan; the next scan settles it
             };
             let hash = version_of(&bytes);
-            if known.get(path).is_some_and(|(_, _, h, _)| *h == hash) {
-                tx.execute(
-                    "UPDATE files SET size = ?2, mtime = ?3 WHERE path = ?1",
-                    params![path, file.size, file.mtime],
-                )
-                .map_err(|e| db_err(&e))?;
+            if let Some((size, mtime, _, _)) = known.get(path).filter(|(_, _, h, _)| *h == hash) {
+                let stored = (file.size, stored_mtime(file.mtime));
+                if stored != (*size, *mtime) {
+                    tx.execute(
+                        "UPDATE files SET size = ?2, mtime = ?3 WHERE path = ?1",
+                        params![path, stored.0, stored.1],
+                    )
+                    .map_err(|e| db_err(&e))?;
+                    dirty = true;
+                }
                 continue;
             }
+            dirty = true;
             if file.kind == "page" && std::str::from_utf8(&bytes).is_err() {
                 let file = Scanned {
                     kind: "unreadable",
@@ -253,7 +261,9 @@ impl Index {
             [],
         )
         .map_err(|e| db_err(&e))?;
-        touch(&tx)?;
+        if dirty {
+            touch(&tx)?;
+        }
         tx.commit().map_err(|e| db_err(&e))
     }
 
@@ -287,7 +297,7 @@ impl Index {
                     if known.as_deref() == Some(hash.as_str()) {
                         tx.execute(
                             "UPDATE files SET size = ?2, mtime = ?3 WHERE path = ?1",
-                            params![path, file.size, file.mtime],
+                            params![path, file.size, stored_mtime(file.mtime)],
                         )
                         .map_err(|e| db_err(&e))?;
                     } else {
@@ -832,7 +842,15 @@ fn upsert(
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
          ON CONFLICT(path) DO UPDATE
          SET kind = ?2, size = ?3, mtime = ?4, hash = ?5, title = ?6, ord = ?7",
-        params![path, file.kind, file.size, file.mtime, hash, title, order],
+        params![
+            path,
+            file.kind,
+            file.size,
+            stored_mtime(file.mtime),
+            hash,
+            title,
+            order
+        ],
     )
     .map_err(|e| db_err(&e))?;
     remove_derived(tx, path)?;
@@ -935,6 +953,26 @@ fn kind_of(path: &str) -> &'static str {
 
 fn size_of(meta: &fs::Metadata) -> i64 {
     i64::try_from(meta.len()).unwrap_or(i64::MAX)
+}
+
+/// Stored instead of an mtime too recent to trust; it never matches a scan.
+const RACY_MTIME: i64 = -1;
+
+/// The mtime to store for a file just read. A file modified within the last
+/// 2 s (FAT's mtime granularity; HFS+ has 1 s) could change again in the same
+/// tick without its (size, mtime) changing, so it's stored as racy and the
+/// next scan hashes it again (as git does with "racily clean" entries).
+fn stored_mtime(mtime: i64) -> i64 {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .and_then(|d| i64::try_from(d.as_nanos()).ok())
+        .unwrap_or(i64::MAX);
+    if now.saturating_sub(mtime) < 2_000_000_000 {
+        RACY_MTIME
+    } else {
+        mtime
+    }
 }
 
 fn mtime_of(meta: &fs::Metadata) -> i64 {

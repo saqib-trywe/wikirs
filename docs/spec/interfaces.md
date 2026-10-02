@@ -96,4 +96,4 @@ Binding, auth, Origin/Host checks and read-only mode are in [http-security.md](h
 2. **Behaviour**: one scenario suite (create → link → move → backlinks → tag → rename_tag → delete, with dry runs) runs against a fixture Wiki through the core, CLI (in-process, `--json`), HTTP (tower `oneshot`) and MCP (in-process transport). It asserts identical JSON Outputs and error kinds.
 3. **Contract snapshot**: a golden file of the catalogue JSON.
 
-Once code exists, the reference tables in `operations.md` are generated from the registry, and a test fails if the committed file is stale.
+The Reference section of `operations.md` is generated from the registry by `tests/docs.rs`, which fails if the committed copy is stale (`UPDATE_DOCS=1` rewrites it).

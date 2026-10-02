@@ -39,6 +39,7 @@ tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
 similar = "2.7"
 assert_cmd = "2.2"
+proptest = "1"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

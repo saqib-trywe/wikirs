@@ -36,7 +36,7 @@ Moving the Wiki folder changes the key, so the Index is rebuilt (~1 s). Stale ca
 
 | Mechanism | When | What |
 |---|---|---|
-| Reconcile scan | `Wiki::open` (every CLI call), after watcher errors or overflow, after journal recovery | Walk the tree. If (size, mtime) differ from the Index → hash the file → reparse only if the hash differs. Files that have disappeared are removed. |
+| Reconcile scan | `Wiki::open` (every CLI call), after watcher errors or overflow, after journal recovery | Walk the tree. If (size, mtime) differ from the Index → hash the file → reparse only if the hash differs. Files that have disappeared are removed. An mtime less than 2 s old is stored as *racy*, so the next scan hashes that file again: on filesystems with coarse timestamps (FAT, HFS+), a same-size rewrite in the same tick would otherwise go unseen. |
 | Watcher | Long-lived processes | Debounced events → incremental update, skipped when the hash already matches (so several watchers do idempotent, cheap work) |
 | Mutation | Every apply | Updates the Index as part of the apply, before returning |
 
