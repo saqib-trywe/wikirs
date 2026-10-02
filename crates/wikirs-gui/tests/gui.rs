@@ -77,10 +77,10 @@ fn opens_the_first_page_and_renders_every_construct(cx: &mut TestAppContext) {
     cx.run_until_parked();
     assert_eq!(fx.path(cx), "c/d");
     // Source and preview side by side, and back.
-    cx.simulate_keystrokes("cmd-e");
+    cx.simulate_keystrokes("secondary-e");
     assert!(fx.view.read_with(cx, |wb, _| wb.source));
     cx.run_until_parked();
-    cx.simulate_keystrokes("cmd-e");
+    cx.simulate_keystrokes("secondary-e");
     assert!(!fx.view.read_with(cx, |wb, _| wb.source));
 }
 
@@ -120,7 +120,7 @@ fn editing_then_cmd_s_saves(cx: &mut TestAppContext) {
         cx.notify();
     });
     cx.run_until_parked();
-    cx.simulate_keystrokes("cmd-s");
+    cx.simulate_keystrokes("secondary-s");
     cx.run_until_parked();
     assert_eq!(
         std::fs::read_to_string(fx.file("a")).unwrap(),
@@ -133,7 +133,7 @@ fn editing_then_cmd_s_saves(cx: &mut TestAppContext) {
 fn the_editor_and_the_session_stay_in_step(cx: &mut TestAppContext) {
     let (fx, cx) = setup(cx);
     // Typing in the source editor edits the buffer.
-    cx.simulate_keystrokes("cmd-e");
+    cx.simulate_keystrokes("secondary-e");
     cx.run_until_parked();
     fx.view.update_in(cx, wikirs_gui::Workbench::focus_editor);
     cx.simulate_input("Hi ");
@@ -142,8 +142,8 @@ fn the_editor_and_the_session_stay_in_step(cx: &mut TestAppContext) {
         .view
         .read_with(cx, |wb, _| wb.session.page.as_ref().unwrap().buffer.clone());
     assert!(buffer.starts_with("Hi "), "{buffer:?}");
-    // ⌘S works with the editor focused too.
-    cx.simulate_keystrokes("cmd-s");
+    // ⌘S (ctrl-S off macOS) works with the editor focused too.
+    cx.simulate_keystrokes("secondary-s");
     cx.run_until_parked();
     assert!(
         std::fs::read_to_string(fx.file("a"))
