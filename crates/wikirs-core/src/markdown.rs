@@ -71,7 +71,7 @@ impl TagSource {
     }
 }
 
-fn options() -> Options {
+pub(crate) fn options() -> Options {
     Options::ENABLE_TABLES
         | Options::ENABLE_FOOTNOTES
         | Options::ENABLE_STRIKETHROUGH
@@ -189,7 +189,7 @@ pub fn parse(text: &str) -> Parsed {
     out
 }
 
-fn level_num(level: HeadingLevel) -> u8 {
+pub(crate) fn level_num(level: HeadingLevel) -> u8 {
     match level {
         HeadingLevel::H1 => 1,
         HeadingLevel::H2 => 2,
@@ -215,7 +215,7 @@ pub fn anchor(heading: &str) -> String {
         .collect()
 }
 
-fn raw_link(
+pub(crate) fn raw_link(
     text: &str,
     range: Range<usize>,
     dest: &str,
@@ -317,6 +317,16 @@ pub fn valid_tag(tag: &str) -> bool {
 /// event text is the source verbatim.
 fn scan_inline_tags(text: &str, offset: usize, source: &str, out: &mut Vec<TagRef>) {
     let verbatim = source == text;
+    out.extend(inline_tags(text).into_iter().map(|(start, tag)| TagRef {
+        range: verbatim.then(|| offset + start..offset + start + 1 + tag.len()),
+        tag: tag.to_string(),
+        source: TagSource::Inline,
+    }));
+}
+
+/// The Inline Tags in one text event: `(position of the `#` in text, Tag)`.
+pub(crate) fn inline_tags(text: &str) -> Vec<(usize, &str)> {
+    let mut out = Vec::new();
     for (word_start, word) in split_words(text) {
         if word.contains("://") || word.starts_with("www.") {
             continue; // URLs
@@ -338,12 +348,7 @@ fn scan_inline_tags(text: &str, offset: usize, source: &str, out: &mut Vec<TagRe
                 let to = chars.get(end).map_or(word.len(), |(p, _)| *p);
                 let tag = word[from..to].trim_end_matches('/');
                 if valid_tag(tag) {
-                    let start = word_start + at;
-                    out.push(TagRef {
-                        tag: tag.to_string(),
-                        source: TagSource::Inline,
-                        range: verbatim.then(|| offset + start..offset + start + 1 + tag.len()),
-                    });
+                    out.push((word_start + at, tag));
                 }
                 i = end;
             } else {
@@ -351,6 +356,7 @@ fn scan_inline_tags(text: &str, offset: usize, source: &str, out: &mut Vec<TagRe
             }
         }
     }
+    out
 }
 
 fn split_words(text: &str) -> impl Iterator<Item = (usize, &str)> {

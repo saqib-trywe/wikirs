@@ -9,6 +9,7 @@ publish = false
 
 [workspace.dependencies]
 wikirs-core = { path = "crates/wikirs-core" }
+wikirs-forms = { path = "crates/wikirs-forms" }
 wikirs-cli = { path = "crates/wikirs-cli" }
 wikirs-mcp = { path = "crates/wikirs-mcp" }
 wikirs-http = { path = "crates/wikirs-http" }

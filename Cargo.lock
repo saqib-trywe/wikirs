@@ -1910,6 +1910,7 @@ dependencies = [
  "clap",
  "dirs",
  "globset",
+ "insta",
  "notify-debouncer-full",
  "percent-encoding",
  "proptest",
@@ -1922,6 +1923,15 @@ dependencies = [
  "toml_edit",
  "xxhash-rust",
  "yaml-rust2",
+]
+
+[[package]]
+name = "wikirs-forms"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "tempfile",
+ "wikirs-core",
 ]
 
 [[package]]

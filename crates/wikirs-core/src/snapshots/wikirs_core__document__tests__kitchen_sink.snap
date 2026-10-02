@@ -1,0 +1,404 @@
+---
+source: crates/wikirs-core/src/document.rs
+assertion_line: 693
+expression: doc
+---
+{
+  "blocks": [
+    {
+      "type": "heading",
+      "level": 1,
+      "anchor": "sink-demo",
+      "inlines": [
+        {
+          "type": "text",
+          "text": "Sink "
+        },
+        {
+          "type": "tag",
+          "tag": "demo"
+        }
+      ],
+      "range": {
+        "start": 33,
+        "end": 46
+      }
+    },
+    {
+      "type": "paragraph",
+      "inlines": [
+        {
+          "type": "text",
+          "text": "Text with "
+        },
+        {
+          "type": "emphasis",
+          "inlines": [
+            {
+              "type": "text",
+              "text": "em"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "text": ", "
+        },
+        {
+          "type": "strong",
+          "inlines": [
+            {
+              "type": "text",
+              "text": "strong"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "text": ", "
+        },
+        {
+          "type": "strikethrough",
+          "inlines": [
+            {
+              "type": "text",
+              "text": "gone"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "text": ", "
+        },
+        {
+          "type": "code",
+          "code": "code"
+        },
+        {
+          "type": "text",
+          "text": ", "
+        },
+        {
+          "type": "math",
+          "source": "x^2",
+          "display": false
+        },
+        {
+          "type": "text",
+          "text": " and a "
+        },
+        {
+          "type": "tag",
+          "tag": "tag/sub"
+        },
+        {
+          "type": "text",
+          "text": "."
+        },
+        {
+          "type": "soft_break"
+        },
+        {
+          "type": "text",
+          "text": "See "
+        },
+        {
+          "type": "link",
+          "link": 0,
+          "inlines": [
+            {
+              "type": "text",
+              "text": "Rust"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "text": ", "
+        },
+        {
+          "type": "link",
+          "link": 1,
+          "inlines": [
+            {
+              "type": "text",
+              "text": "notes"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "text": ", "
+        },
+        {
+          "type": "external",
+          "url": "https://x.com/#no",
+          "inlines": [
+            {
+              "type": "text",
+              "text": "https://x.com/#no"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "text": " and "
+        },
+        {
+          "type": "external",
+          "url": "https://y.com",
+          "inlines": [
+            {
+              "type": "text",
+              "text": "web"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "text": "."
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "inlines": [
+        {
+          "type": "image",
+          "link": 2,
+          "url": "diagram.png",
+          "alt": [
+            {
+              "type": "text",
+              "text": "diagram.png"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "text": " "
+        },
+        {
+          "type": "image",
+          "link": null,
+          "url": "https://img/x.png",
+          "alt": [
+            {
+              "type": "text",
+              "text": "alt "
+            },
+            {
+              "type": "tag",
+              "tag": "t"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "list",
+      "start": null,
+      "items": [
+        {
+          "task": false,
+          "blocks": [
+            {
+              "type": "paragraph",
+              "inlines": [
+                {
+                  "type": "text",
+                  "text": "todo"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "task": true,
+          "blocks": [
+            {
+              "type": "paragraph",
+              "inlines": [
+                {
+                  "type": "text",
+                  "text": "done"
+                }
+              ]
+            },
+            {
+              "type": "list",
+              "start": 1,
+              "items": [
+                {
+                  "task": null,
+                  "blocks": [
+                    {
+                      "type": "paragraph",
+                      "inlines": [
+                        {
+                          "type": "text",
+                          "text": "nested"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "alert",
+      "kind": "warning",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "text": "Careful"
+            },
+            {
+              "type": "footnote_ref",
+              "label": "1"
+            },
+            {
+              "type": "text",
+              "text": "."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "quote",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "text": "plain quote"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "align": [
+        "left",
+        "right"
+      ],
+      "head": [
+        [
+          {
+            "type": "text",
+            "text": "a"
+          }
+        ],
+        [
+          {
+            "type": "text",
+            "text": "b"
+          }
+        ]
+      ],
+      "rows": [
+        [
+          [
+            {
+              "type": "text",
+              "text": "1"
+            }
+          ],
+          [
+            {
+              "type": "link",
+              "link": 3,
+              "inlines": [
+                {
+                  "type": "text",
+                  "text": "x"
+                }
+              ]
+            }
+          ]
+        ]
+      ]
+    },
+    {
+      "type": "code",
+      "lang": "rust",
+      "code": "let #no = 1;\n"
+    },
+    {
+      "type": "paragraph",
+      "inlines": [
+        {
+          "type": "math",
+          "source": "\nE = mc^2\n",
+          "display": true
+        }
+      ]
+    },
+    {
+      "type": "html",
+      "html": "<div>raw</div>\n"
+    },
+    {
+      "type": "paragraph",
+      "inlines": [
+        {
+          "type": "text",
+          "text": "Inline "
+        },
+        {
+          "type": "html",
+          "html": "<b>"
+        },
+        {
+          "type": "text",
+          "text": "html"
+        },
+        {
+          "type": "html",
+          "html": "</b>"
+        },
+        {
+          "type": "text",
+          "text": "."
+        }
+      ]
+    },
+    {
+      "type": "rule"
+    }
+  ],
+  "footnotes": [
+    {
+      "label": "1",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "text": "The note "
+            },
+            {
+              "type": "tag",
+              "tag": "fn"
+            },
+            {
+              "type": "text",
+              "text": "."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

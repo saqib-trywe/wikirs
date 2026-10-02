@@ -5,6 +5,7 @@
 
 pub mod attachments;
 pub mod config;
+pub mod document;
 pub mod error;
 pub mod frontmatter;
 pub mod hierarchy;
