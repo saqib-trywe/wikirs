@@ -3,6 +3,7 @@ name = "wikirs-cli"
 edition.workspace = true
 version.workspace = true
 publish.workspace = true
+license.workspace = true
 
 [dependencies]
 wikirs-core = { workspace = true, features = ["clap"] }

@@ -6,6 +6,7 @@ resolver = "3"
 edition = "2024"
 version = "0.1.0"
 publish = false
+license = "GPL-3.0-or-later"
 
 [workspace.dependencies]
 wikirs-core = { path = "crates/wikirs-core" }
@@ -58,6 +59,7 @@ name = "wikirs"
 edition.workspace = true
 version.workspace = true
 publish.workspace = true
+license.workspace = true
 
 [features]
 default = ["mcp", "http", "tui"]

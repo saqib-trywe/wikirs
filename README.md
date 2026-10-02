@@ -16,16 +16,20 @@ One binary, no daemon. Every Operation (create, move, link, tag, search, …) ca
 - **Safe writes**: every mutation is a Plan you can preview with `--dry-run`. Writes check the version you read, so a stale edit is refused rather than silently overwriting someone else's. A write lock and a roll-forward journal mean a crash never leaves a half-applied change.
 - **Markdown**: CommonMark and GFM (tables, task lists, strikethrough), footnotes, alerts (`> [!NOTE]`), math and YAML frontmatter.
 
-## Build
+## Install
 
-Needs Rust 1.98.1 (pinned in `rust-toolchain.toml`; rustup picks it up).
+Needs Rust 1.98.1 (pinned in `rust-toolchain.toml`; rustup picks it up). Then, on macOS or Linux:
 
 ```sh
-cargo build --release          # target/release/wikirs
-cargo install --path .         # or put `wikirs` on your PATH
+scripts/install.sh
 ```
 
-`cargo build --no-default-features` builds a headless, CLI-only binary without MCP, HTTP, the TUI, or tokio.
+This builds a release binary and installs it as `~/.local/bin/wikirs`. It also creates the config folder `~/.config/wikirs/` (or `$XDG_CONFIG_HOME/wikirs`) with a commented starter `config.toml`, which a later run never overwrites. Options:
+- `--bin-dir DIR` installs the binary somewhere else.
+- `--headless` builds a CLI-only binary: no MCP, HTTP, TUI or tokio.
+- `--uninstall` removes the binary and leaves the config.
+
+To build by hand instead, run `cargo build --release`. The binary is `target/release/wikirs`.
 
 ## Quick start
 
@@ -66,7 +70,7 @@ The CLI, TUI and `serve` use the first of these:
 1. `--wiki <path or name>`
 2. `WIKIRS_WIKI`
 3. the nearest folder above the current directory that contains `.wikirs/`
-4. `default_wiki` in your user config
+4. `default_wiki` in `~/.config/wikirs/config.toml`, which can also name Wikis (`[wikis] notes = "~/notes"`)
 
 `mcp` skips the walk-up, because an agent's working directory is unpredictable. Named Wikis let the same config work on every machine. Details are in [wiki-selection.md](docs/spec/wiki-selection.md).
 
@@ -89,3 +93,7 @@ The workspace is split into crates:
 - adapters: `wikirs-cli`, `wikirs-mcp`, `wikirs-http`, `wikirs-tui`
 
 Adapters depend only on the core, never on each other. A parity test checks that every Interface exposes every Operation with identical results. `UPDATE_DOCS=1 cargo test --test docs` regenerates the Operation reference. Testing is described in [testing.md](docs/spec/testing.md), and the crate layout in [workspace.md](docs/spec/workspace.md).
+
+## License
+
+GPL-3.0-or-later: see [LICENSE](LICENSE).
