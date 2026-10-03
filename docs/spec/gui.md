@@ -56,6 +56,7 @@ This is the banner from the prototype (Reload / Keep mine / Compare). In the rea
   - A Placeholder or Broken Link shows "Create it".
   - A paragraph that is only an embedded Attachment shows the image, and clicking it opens the file.
 - **Editor**: `[[` autocompletes Page Paths and Titles.
+- Clicking a task's checkbox ticks it (`Session::toggle_task`): a Page with no unsaved edits saves at once, with `base_version`; otherwise the tick joins the edits.
 - Watch events are taken in every 250 ms on the UI thread.
 
 ## Rendering work the build needs

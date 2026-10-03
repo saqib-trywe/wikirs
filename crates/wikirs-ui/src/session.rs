@@ -240,6 +240,28 @@ impl Session {
         }
     }
 
+    /// Ticks or unticks the task whose `[ ]` / `[x]` is at `range` in the
+    /// buffer. A Page without unsaved edits is saved at once (with
+    /// `base_version`, as any save); otherwise the change joins the edits.
+    pub fn toggle_task(&mut self, range: std::ops::Range<usize>) {
+        let Some(page) = self.page.as_ref() else {
+            return;
+        };
+        let new = match page.buffer.get(range.clone()) {
+            Some("[ ]") => "[x]",
+            Some("[x]" | "[X]") => "[ ]",
+            // The buffer changed since the Page was drawn.
+            _ => return,
+        };
+        let clean = !page.dirty();
+        let mut text = page.buffer.clone();
+        text.replace_range(range, new);
+        self.set_buffer(text);
+        if clean {
+            self.save();
+        }
+    }
+
     /// Drops unsaved edits.
     pub fn discard(&mut self) {
         if let Some(page) = self.page.as_mut() {

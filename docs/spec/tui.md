@@ -47,4 +47,4 @@ The banner row reads "CHANGED ON DISK": Reload / Keep mine / Compare (r / m / d 
 ## Rendering work the build needs
 
 - A ratatui renderer for the core's document model ([ADR 0007](../adr/0007-one-markdown-parse-shared-document-model.md)); presentation per construct is in [markdown.md](markdown.md#presentation).
-- Images are a later nice-to-have. For now they show a `[image: path]` placeholder, and a key opens the file in the system viewer. `ratatui-image` (kitty/sixel/iTerm) is the candidate if inline images are wanted later.
+- **Images** (`ratatui-image`): a paragraph that is only an embedded Attachment keeps its `[n] [image: path]` line and shows the picture in the rows under it. It uses kitty graphics (kitty, Ghostty) or iTerm2 images (iTerm2, WezTerm and others) where the environment says the terminal has them, and half-block characters elsewhere. The terminal is never queried over stdin, because one that didn't answer would hang startup. A picture is drawn only when all of it is on screen. Following its number still opens the file in the system viewer.

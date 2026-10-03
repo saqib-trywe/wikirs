@@ -496,3 +496,94 @@ fn watch_shows_the_event_log() {
     let frame = fx.frame();
     assert!(frame.contains("page_modified inbox"), "{frame}");
 }
+
+// ------------------------------------------------------------------- images
+
+fn add_image(fx: &Fixture) {
+    let mut png = Vec::new();
+    image::RgbImage::from_fn(300, 160, |x, _| {
+        image::Rgb([u8::try_from(x % 256).unwrap(), 40, 200])
+    })
+    .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+    .unwrap();
+    let dir = fx.dir.path().join("wiki/pics");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("p.png"), png).unwrap();
+}
+
+/// After writing files behind the Index's back.
+fn rebuild(fx: &mut Fixture) {
+    fx.app.session.run_json("rebuild_index", json!({})).unwrap();
+}
+
+/// Cells painted with picture colours (half-blocks use RGB backgrounds).
+fn picture_cells(fx: &Fixture) -> usize {
+    picture_cells_in(fx, 30)
+}
+
+fn picture_cells_in(fx: &Fixture, height: u16) -> usize {
+    let mut terminal = Terminal::new(TestBackend::new(120, height)).unwrap();
+    terminal.draw(|f| ui::draw(f, &fx.app)).unwrap();
+    let buf = terminal.backend().buffer();
+    buf.content()
+        .iter()
+        .filter(|c| matches!(c.bg, ratatui::style::Color::Rgb(..)))
+        .count()
+}
+
+#[test]
+fn an_embedded_image_is_drawn_when_images_are_on() {
+    let mut fx = Fixture::new();
+    add_image(&fx);
+    rebuild(&mut fx);
+    fx.app
+        .session
+        .run_json(
+            "create_page",
+            json!({ "path": "pics", "content": "# Pics\n\n![[pics/p.png]]\n\nafter\n" }),
+        )
+        .unwrap();
+    fx.open("pics");
+    // Off (as in every other test): the placeholder line only.
+    assert!(fx.frame().contains("[image: pics/p.png]"));
+    assert_eq!(picture_cells(&fx), 0);
+    fx.app.images = Some(wikirs_tui::images::Images::new(
+        ratatui_image::picker::Picker::halfblocks(),
+    ));
+    assert!(picture_cells(&fx) > 100);
+    assert!(
+        fx.frame().contains("after"),
+        "the text after the image still shows"
+    );
+    // Three lines sit above the picture: scrolled 3, it's at the top, whole.
+    fx.app.scroll = 3;
+    assert!(picture_cells(&fx) > 100);
+    // Scrolled further, it would be cut off: not drawn.
+    fx.app.scroll = 5;
+    assert_eq!(picture_cells(&fx), 0);
+    // In a short window it would run off the bottom: not drawn either.
+    fx.app.scroll = 0;
+    assert_eq!(picture_cells_in(&fx, 18), 0);
+    assert!(picture_cells_in(&fx, 22) > 100);
+}
+
+#[test]
+fn a_broken_embed_keeps_no_room_for_a_picture() {
+    let doc = wikirs_core::document::document("![[pics/gone.png]]\n");
+    let broken = wikirs_core::links::Resolved {
+        target: "pics/gone.png".into(),
+        target_kind: wikirs_core::links::TargetKind::Attachment,
+        heading: None,
+        status: wikirs_core::links::LinkStatus::Broken,
+    };
+    let ok = wikirs_core::links::Resolved {
+        status: wikirs_core::links::LinkStatus::Ok,
+        ..broken.clone()
+    };
+    let rendered = wikirs_tui::render::render(&doc, &[Some(broken)], None, true);
+    assert!(rendered.images.is_empty());
+    assert_eq!(rendered.lines.len(), 1);
+    let rendered = wikirs_tui::render::render(&doc, &[Some(ok)], None, true);
+    assert_eq!(rendered.images, [(1, "pics/gone.png".to_string())]);
+    assert_eq!(rendered.lines.len(), 1 + wikirs_tui::render::IMAGE_ROWS);
+}

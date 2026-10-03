@@ -544,8 +544,17 @@ impl Workbench {
         let (views, notes) = layout::layout(&page.doc, &page.resolved);
         let view = cx.entity();
         let mut renderer = PageRenderer::new(
-            Rc::new(move |link, window, cx| {
-                view.update(cx, |this, cx| this.follow(link, window, cx));
+            Rc::new({
+                let view = view.clone();
+                move |link, window, cx| {
+                    view.update(cx, |this, cx| this.follow(link, window, cx));
+                }
+            }),
+            Rc::new(move |range, window, cx| {
+                view.update(cx, |this, cx| {
+                    this.session.toggle_task(range);
+                    this.changed(window, cx);
+                });
             }),
             self.session.wiki().root().to_path_buf(),
         );
@@ -840,7 +849,7 @@ fn anchors_in(view: &View) -> Vec<String> {
         }
         View::List(items) => items
             .iter()
-            .flat_map(|(_, blocks)| blocks.iter().flat_map(anchors_in))
+            .flat_map(|(_, _, blocks)| blocks.iter().flat_map(anchors_in))
             .collect(),
         _ => Vec::new(),
     }

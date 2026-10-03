@@ -31,13 +31,13 @@ Parsed by pulldown-cmark in `wikirs-core`:
 |---|---|---|
 | headings, emphasis, lists, quotes | styled text | styled text |
 | tables | table | box-drawn grid |
-| task lists | checkboxes (read-only in v1) | `[ ]` / `[x]` |
+| task lists | checkboxes: clicking one ticks it in the file (saved at once unless there are unsaved edits) | `[ ]` / `[x]` |
 | alerts | coloured callout with its label | bordered block with its label |
 | footnotes | superscript marker, with the list at the end | `[^1]`, with the list at the end |
 | math | styled source in v1 (typesetting later) | styled source |
 | code blocks (incl. mermaid) | syntax-highlighted | code block |
 | Links | clickable; Broken Links styled as broken | numbered `[n]`; Broken Links marked |
-| images / `![[attachment]]` | inline image (local image loading must work, see [gui.md](gui.md)) | `[image: path]` placeholder, opens in the system viewer |
+| images / `![[attachment]]` | inline image (local image loading must work, see [gui.md](gui.md)) | the picture under its `[image: path]` line (kitty, iTerm2 or half-blocks), and it opens in the system viewer |
 | frontmatter | hidden (the Tags panel shows `tags`) | hidden |
 | raw HTML | shown as literal, dimmed text; never rendered | same |
 | anything unrecognised | plain text | plain text |

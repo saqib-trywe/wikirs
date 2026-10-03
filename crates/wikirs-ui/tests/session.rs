@@ -253,3 +253,31 @@ fn queries_for_pickers_and_the_palette() {
     assert_eq!(fx.session.title_of("c/d"), "D");
     assert_eq!(fx.session.title_of("nope"), "nope");
 }
+
+#[test]
+fn ticking_a_task_saves_a_clean_page_and_joins_edits_on_a_dirty_one() {
+    let mut fx = Fixture::new();
+    fx.write("a", "# A\n\n- [ ] one\n- [X] two\n");
+    fx.session.run_json("rebuild_index", json!({})).unwrap();
+    assert!(fx.session.open("b") && fx.session.open("a"));
+    let marker = |fx: &Fixture, i: usize| {
+        let wikirs_core::document::Block::List { items, .. } = &fx.page().doc.blocks[1] else {
+            panic!("{:?}", fx.page().doc.blocks)
+        };
+        items[i].task_range.clone().unwrap()
+    };
+    fx.session.toggle_task(marker(&fx, 0));
+    assert_eq!(fx.read("a"), "# A\n\n- [x] one\n- [X] two\n");
+    assert!(!fx.session.dirty());
+    fx.session.toggle_task(marker(&fx, 1));
+    assert_eq!(fx.read("a"), "# A\n\n- [x] one\n- [ ] two\n");
+    // With unsaved edits, ticking only changes the buffer.
+    fx.session.set_buffer(format!("{}more\n", fx.page().buffer));
+    fx.session.toggle_task(marker(&fx, 0));
+    assert_eq!(fx.read("a"), "# A\n\n- [x] one\n- [ ] two\n");
+    assert!(fx.page().buffer.starts_with("# A\n\n- [ ] one"));
+    // A range that no longer holds a marker does nothing.
+    let before = fx.page().buffer.clone();
+    fx.session.toggle_task(0..3);
+    assert_eq!(fx.page().buffer, before);
+}

@@ -11,23 +11,27 @@ use gpui_kit::{
 };
 use wikirs_core::document::{AlertKind, Align};
 
-use crate::layout::{Mark, Rich, View};
+use crate::layout::{ListEntry, Mark, Rich, View};
 
 /// Called with a Link's index when its text is clicked.
 pub type OnLink = Rc<dyn Fn(usize, &mut Window, &mut App)>;
+/// Called with where a task's `[ ]` is when its checkbox is clicked.
+pub type OnTask = Rc<dyn Fn(std::ops::Range<usize>, &mut Window, &mut App)>;
 
 /// Builds elements; `ids` keeps every interactive text's id unique.
 pub struct PageRenderer {
     on_link: OnLink,
+    on_task: OnTask,
     /// The Wiki root, which Attachment paths are relative to.
     root: std::path::PathBuf,
     next_id: usize,
 }
 
 impl PageRenderer {
-    pub fn new(on_link: OnLink, root: std::path::PathBuf) -> Self {
+    pub fn new(on_link: OnLink, on_task: OnTask, root: std::path::PathBuf) -> Self {
         Self {
             on_link,
+            on_task,
             root,
             next_id: 0,
         }
@@ -65,16 +69,7 @@ impl PageRenderer {
                 .children(self.views(children, cx))
                 .into_any_element(),
             View::Alert { kind, children } => self.alert(*kind, children, cx),
-            View::List(items) => v_flex()
-                .my_1()
-                .children(items.iter().map(|(marker, blocks)| {
-                    h_flex()
-                        .items_start()
-                        .gap_2()
-                        .child(div().min_w(px(18.)).child(marker.clone()))
-                        .child(v_flex().flex_1().children(self.views(blocks, cx)))
-                }))
-                .into_any_element(),
+            View::List(items) => self.list(items, cx),
             View::Code { lang, code } => v_flex()
                 .my_2()
                 .p_2()
@@ -127,6 +122,32 @@ impl PageRenderer {
                 .child(html.clone())
                 .into_any_element(),
         }
+    }
+
+    /// A list; a task's checkbox ticks it when clicked.
+    fn list(&mut self, items: &[ListEntry], cx: &App) -> AnyElement {
+        v_flex()
+            .my_1()
+            .children(items.iter().map(|(marker, task, blocks)| {
+                self.next_id += 1;
+                let mut marker_el = div()
+                    .id(("task", self.next_id))
+                    .min_w(px(18.))
+                    .child(marker.clone());
+                if let Some(range) = task.clone() {
+                    let (on_task, i) = (self.on_task.clone(), self.next_id);
+                    marker_el = marker_el
+                        .cursor_pointer()
+                        .debug_selector(move || format!("task-{i}"))
+                        .on_click(move |_, window, cx| on_task(range.clone(), window, cx));
+                }
+                h_flex()
+                    .items_start()
+                    .gap_2()
+                    .child(marker_el)
+                    .child(v_flex().flex_1().children(self.views(blocks, cx)))
+            }))
+            .into_any_element()
     }
 
     fn alert(&mut self, kind: AlertKind, children: &[View], cx: &App) -> AnyElement {

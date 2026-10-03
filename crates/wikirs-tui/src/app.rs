@@ -93,6 +93,8 @@ pub struct App {
     pub compare: bool,
     /// Digits typed so far towards a numbered Link.
     pub digits: String,
+    /// Draws inline images when set (the terminal loop detects how).
+    pub images: Option<crate::images::Images>,
     quit: bool,
     request: Option<Request>,
 }
@@ -110,6 +112,7 @@ impl App {
             mode: Mode::View,
             compare: false,
             digits: String::new(),
+            images: None,
             quit: false,
             request: None,
         };
@@ -199,6 +202,9 @@ impl App {
     /// Takes in pending watch events (call once per loop turn).
     pub fn pump(&mut self) {
         if self.session.pump() {
+            if let Some(images) = &self.images {
+                images.clear();
+            }
             self.after_change();
         }
     }
@@ -442,7 +448,8 @@ impl App {
                 self.opened();
                 if let (Some(heading), Some(page)) = (heading, &self.session.page) {
                     let anchor = markdown::anchor(&heading);
-                    let rendered = render::render(&page.doc, &page.resolved, None);
+                    let rendered =
+                        render::render(&page.doc, &page.resolved, None, self.images.is_some());
                     if let Some((_, line)) = rendered.headings.iter().find(|(a, _)| *a == anchor) {
                         self.scroll = u16::try_from(*line).unwrap_or(u16::MAX);
                     }

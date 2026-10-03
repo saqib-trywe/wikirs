@@ -443,3 +443,35 @@ fn a_list_field_takes_comma_separated_items(cx: &mut TestAppContext) {
     });
     assert_eq!(input["tags"], json!(["x", "y/z"]));
 }
+
+#[gpui::test]
+fn clicking_a_checkbox_ticks_the_task(cx: &mut TestAppContext) {
+    let (fx, cx) = setup(cx);
+    fx.view.update_in(cx, |wb, window, cx| {
+        wb.session
+            .run_json(
+                "create_page",
+                json!({ "path": "t", "content": "- [ ] one\n" }),
+            )
+            .unwrap();
+        wb.open("t", window, cx);
+    });
+    cx.run_until_parked();
+    // The first interactive element drawn is the item's checkbox.
+    let bounds = cx
+        .debug_bounds("task-1")
+        .expect("the checkbox is clickable");
+    cx.simulate_click(bounds.center(), Modifiers::none());
+    cx.run_until_parked();
+    assert_eq!(
+        std::fs::read_to_string(fx.file("t")).unwrap(),
+        "- [x] one\n"
+    );
+    let bounds = cx.debug_bounds("task-1").unwrap();
+    cx.simulate_click(bounds.center(), Modifiers::none());
+    cx.run_until_parked();
+    assert_eq!(
+        std::fs::read_to_string(fx.file("t")).unwrap(),
+        "- [ ] one\n"
+    );
+}

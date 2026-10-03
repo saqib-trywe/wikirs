@@ -1,6 +1,6 @@
 ---
 source: crates/wikirs-core/src/document.rs
-assertion_line: 714
+assertion_line: 713
 expression: doc
 ---
 {
@@ -201,10 +201,7 @@ expression: doc
       "items": [
         {
           "task": false,
-          "task_range": {
-            "start": 260,
-            "end": 263
-          },
+          "task_range": null,
           "blocks": [
             {
               "type": "paragraph",
@@ -219,10 +216,7 @@ expression: doc
         },
         {
           "task": true,
-          "task_range": {
-            "start": 271,
-            "end": 274
-          },
+          "task_range": null,
           "blocks": [
             {
               "type": "paragraph",

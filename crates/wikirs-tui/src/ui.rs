@@ -151,14 +151,42 @@ fn page(f: &mut Frame, app: &App, area: Rect) {
         return;
     }
     let selected = (app.focus == Focus::Links).then_some(app.link_sel);
-    let rendered = render::render(&page.doc, &page.resolved, selected);
+    let rendered = render::render(&page.doc, &page.resolved, selected, app.images.is_some());
+    let images = rendered.images.clone();
+    let lines = rendered.lines;
     f.render_widget(
-        Paragraph::new(Text::from(rendered.lines))
+        Paragraph::new(Text::from(lines.clone()))
             .wrap(Wrap { trim: false })
             .scroll((app.scroll, 0))
             .block(Block::bordered().title(title)),
         area,
     );
+    if let Some(store) = &app.images {
+        let inner = area.inner(ratatui::layout::Margin::new(1, 1));
+        let root = app.session.wiki().root().to_path_buf();
+        for (line, target) in images {
+            // Where the kept lines land once everything above them is wrapped.
+            let above = Paragraph::new(Text::from(lines[..line].to_vec()))
+                .wrap(Wrap { trim: false })
+                .line_count(inner.width);
+            let Some(top) = above.checked_sub(usize::from(app.scroll)) else {
+                continue; // scrolled past
+            };
+            let rows = render::IMAGE_ROWS;
+            // Only whole pictures: a cut-off one can't be drawn faithfully.
+            if top + rows > usize::from(inner.height) {
+                continue;
+            }
+            let rect = Rect {
+                x: inner.x,
+                y: inner.y + u16::try_from(top).unwrap_or(u16::MAX),
+                width: inner.width,
+                height: u16::try_from(rows).unwrap_or(u16::MAX),
+            };
+            let file = target.split('/').fold(root.clone(), |p, seg| p.join(seg));
+            store.draw(f, rect, &file);
+        }
+    }
 }
 
 fn side(f: &mut Frame, app: &App, area: Rect) {

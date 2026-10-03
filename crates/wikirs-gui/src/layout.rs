@@ -33,6 +33,9 @@ pub enum Mark {
     Muted,
 }
 
+/// A list item: its marker, where a task's `[ ]` is, and its blocks.
+pub type ListEntry = (String, Option<Range<usize>>, Vec<View>);
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum View {
     Heading {
@@ -46,8 +49,9 @@ pub enum View {
         kind: AlertKind,
         children: Vec<View>,
     },
-    /// Each item: its marker (`•`, `3.`, `☐`, `☑`) and blocks.
-    List(Vec<(String, Vec<View>)>),
+    /// Each item: its marker (`•`, `3.`, `☐`, `☑`), where a task's `[ ]` is
+    /// in the Page (clicking ticks it), and its blocks.
+    List(Vec<ListEntry>),
     Code {
         lang: Option<String>,
         code: String,
@@ -131,7 +135,11 @@ impl Layout<'_> {
                             (None, Some(first)) => format!("{}.", first + n as u64),
                             (None, None) => "•".to_string(),
                         };
-                        (marker, item.blocks.iter().map(|b| self.block(b)).collect())
+                        (
+                            marker,
+                            item.task_range.clone(),
+                            item.blocks.iter().map(|b| self.block(b)).collect(),
+                        )
                     })
                     .collect(),
             ),

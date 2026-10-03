@@ -46,8 +46,13 @@ http-body-util = "0.1"
 similar = "2.7"
 assert_cmd = "2.2"
 proptest = "1"
-ratatui = "0.30"
+# `line_count`: where an inline image lands once the Page is wrapped.
+ratatui = { version = "0.30", features = ["unstable-rendered-line-info"] }
 ratatui-textarea = "0.9"
+# Inline images in terminals that can show them (kitty, iTerm2, sixel), else
+# half-block characters. No chafa: it would need a C library.
+ratatui-image = { version = "11.1", default-features = false, features = ["image-defaults", "crossterm"] }
+image = "0.25"
 # Pinned exactly: gpui and gpui-kit break weekly (workspace.md). An upgrade is
 # one PR that moves both pins together.
 gpui-kit = { version = "=0.7.0", features = ["tree-sitter-markdown", "tree-sitter-markdown-inline"] }

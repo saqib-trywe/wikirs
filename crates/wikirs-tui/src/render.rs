@@ -11,28 +11,53 @@ use wikirs_core::{
     links::{LinkStatus, Resolved},
 };
 
-/// A rendered Page: its lines, and the line each heading starts on.
+/// A rendered Page: its lines, the line each heading starts on, and the
+/// blank lines kept for each inline image.
 pub struct Rendered {
     pub lines: Vec<Line<'static>>,
     pub headings: Vec<(String, usize)>,
+    /// `(first kept line, Attachment path from the Wiki root)`; each image
+    /// has [`IMAGE_ROWS`] lines.
+    pub images: Vec<(usize, String)>,
 }
 
+/// Lines kept under an image's `[image: path]` line, for drawing it.
+pub const IMAGE_ROWS: usize = 12;
+
 /// Draws `doc`. `resolved[i]` is Link `i`'s resolution (`None` if it couldn't
-/// be resolved); `selected` highlights one Link.
+/// be resolved); `selected` highlights one Link. With `images`, a top-level
+/// paragraph that is only an embedded Attachment keeps room for the picture.
 #[must_use]
-pub fn render(doc: &Document, resolved: &[Option<Resolved>], selected: Option<usize>) -> Rendered {
+pub fn render(
+    doc: &Document,
+    resolved: &[Option<Resolved>],
+    selected: Option<usize>,
+    images: bool,
+) -> Rendered {
     let r = Renderer { resolved, selected };
     let mut out = Rendered {
         lines: Vec::new(),
         headings: Vec::new(),
+        images: Vec::new(),
     };
-    r.blocks(&doc.blocks, &mut out);
+    for (i, block) in doc.blocks.iter().enumerate() {
+        if i > 0 {
+            out.lines.push(Line::default());
+        }
+        r.block(block, &mut out);
+        if let (true, Some(file)) = (images, r.lone_attachment(block)) {
+            out.images.push((out.lines.len(), file));
+            out.lines
+                .extend(std::iter::repeat_n(Line::default(), IMAGE_ROWS));
+        }
+    }
     if !doc.footnotes.is_empty() {
         out.lines.push(Line::from("─".repeat(20)).dim());
         for note in &doc.footnotes {
             let mut lines = Rendered {
                 lines: Vec::new(),
                 headings: Vec::new(),
+                images: Vec::new(),
             };
             r.blocks(&note.blocks, &mut lines);
             let marker = format!("[^{}]: ", note.label);
@@ -58,6 +83,34 @@ struct Renderer<'a> {
 }
 
 impl Renderer<'_> {
+    /// The Attachment a paragraph shows, if it is only one embedded image.
+    fn lone_attachment(&self, block: &Block) -> Option<String> {
+        let Block::Paragraph { inlines } = block else {
+            return None;
+        };
+        let mut shown = inlines
+            .iter()
+            .filter(|i| !matches!(i, Inline::Text { text } if text.trim().is_empty()));
+        let (
+            Some(Inline::Image {
+                link: Some(link), ..
+            }),
+            None,
+        ) = (shown.next(), shown.next())
+        else {
+            return None;
+        };
+        self.resolved
+            .get(*link)
+            .cloned()
+            .flatten()
+            .filter(|r| {
+                r.status == LinkStatus::Ok
+                    && r.target_kind == wikirs_core::links::TargetKind::Attachment
+            })
+            .map(|r| r.target)
+    }
+
     fn blocks(&self, blocks: &[Block], out: &mut Rendered) {
         for (i, block) in blocks.iter().enumerate() {
             // A blank line between blocks, as in the source.
@@ -152,6 +205,7 @@ impl Renderer<'_> {
         let mut inner = Rendered {
             lines: Vec::new(),
             headings: Vec::new(),
+            images: Vec::new(),
         };
         self.blocks(blocks, &mut inner);
         let base = out.lines.len();
@@ -170,6 +224,7 @@ impl Renderer<'_> {
         let mut inner = Rendered {
             lines: Vec::new(),
             headings: Vec::new(),
+            images: Vec::new(),
         };
         for block in &item.blocks {
             self.block(block, &mut inner);

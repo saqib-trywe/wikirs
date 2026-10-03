@@ -7,6 +7,7 @@
 
 pub mod app;
 pub mod form;
+pub mod images;
 pub mod render;
 pub mod result;
 pub mod ui;
@@ -37,6 +38,7 @@ pub fn run(wiki: Wiki, page: Option<&str>) -> io::Result<()> {
         app.open(page);
     }
     let mut terminal = ratatui::init();
+    app.images = Some(images::Images::detect());
     let outcome = (|| loop {
         terminal.draw(|f| ui::draw(f, &app))?;
         if event::poll(Duration::from_millis(200))?

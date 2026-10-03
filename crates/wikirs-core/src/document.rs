@@ -74,6 +74,8 @@ pub enum Block {
 pub struct Item {
     /// `Some(checked)` for a task list item.
     pub task: Option<bool>,
+    /// Where a task's `[ ]` / `[x]` is in the Page, for ticking it.
+    pub task_range: Option<Range<usize>>,
     pub blocks: Vec<Block>,
 }
 
@@ -265,7 +267,10 @@ fn visit_all<'a>(inlines: &'a [Inline], f: &mut impl FnMut(&'a Inline)) {
 enum Container {
     Root,
     Quote(Option<BlockQuoteKind>),
-    Item { task: Option<bool> },
+    Item {
+        task: Option<bool>,
+        task_range: Option<Range<usize>>,
+    },
     Footnote(String),
 }
 
@@ -370,13 +375,14 @@ impl Builder {
             Event::TaskListMarker(checked) => {
                 let item = self.stack.iter_mut().rev().find_map(|f| match f {
                     Frame::Blocks {
-                        kind: Container::Item { task },
+                        kind: Container::Item { task, task_range },
                         ..
-                    } => Some(task),
+                    } => Some((task, task_range)),
                     _ => None,
                 });
-                if let Some(task) = item {
+                if let Some((task, task_range)) = item {
                     *task = Some(checked);
+                    *task_range = Some(range);
                 }
             }
         }
@@ -404,7 +410,10 @@ impl Builder {
                 start,
                 items: Vec::new(),
             },
-            Tag::Item => blocks(Container::Item { task: None }),
+            Tag::Item => blocks(Container::Item {
+                task: None,
+                task_range: None,
+            }),
             Tag::FootnoteDefinition(label) => blocks(Container::Footnote(label.into_string())),
             Tag::Table(align) => Frame::Table {
                 align: align.into_iter().map(convert_align).collect(),
@@ -497,9 +506,13 @@ impl Builder {
                     kind: convert_alert(kind),
                     blocks,
                 }),
-                Container::Item { task } => {
+                Container::Item { task, task_range } => {
                     if let Some(Frame::List { items, .. }) = self.stack.last_mut() {
-                        items.push(Item { task, blocks });
+                        items.push(Item {
+                            task,
+                            task_range,
+                            blocks,
+                        });
                     }
                 }
                 Container::Footnote(label) => self.footnotes.push(Footnote { label, blocks }),
@@ -709,6 +722,20 @@ Inline <b>html</b>.\n\n\
                 "[[x]]"
             ]
         );
+    }
+
+    #[test]
+    fn task_markers_have_their_range() {
+        let text = "- [ ] todo\n- [x] done\n- plain\n";
+        let doc = document(text);
+        let Block::List { items, .. } = &doc.blocks[0] else {
+            panic!()
+        };
+        let ranges: Vec<_> = items
+            .iter()
+            .map(|i| i.task_range.clone().map(|r| &text[r]))
+            .collect();
+        assert_eq!(ranges, [Some("[ ]"), Some("[x]"), None]);
     }
 
     #[test]
