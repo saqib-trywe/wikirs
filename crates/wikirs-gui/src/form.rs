@@ -8,7 +8,7 @@ use gpui_kit::{
         ActiveTheme as _, Sizable as _,
         button::{Button, ButtonVariants},
         h_flex,
-        input::{Input, InputState},
+        input::{Input, InputEvent, InputState},
         v_flex,
     },
     prelude::FluentBuilder as _,
@@ -26,6 +26,8 @@ pub struct FormPanel {
     pub outcome: Option<Vec<OutcomeLine>>,
     /// A dry run's Input with `dry_run` off: what Apply runs.
     pub apply: Option<Value>,
+    /// Enter in any input runs the form.
+    subscriptions: Vec<Subscription>,
 }
 
 impl FormPanel {
@@ -36,9 +38,45 @@ impl FormPanel {
             errors: Vec::new(),
             outcome: None,
             apply: None,
+            subscriptions: Vec::new(),
         };
         panel.make_inputs(window, cx);
+        // Start typing in the first field that isn't filled in yet.
+        let first = panel
+            .inputs
+            .iter()
+            .find(|(_, input)| input.read(cx).value().is_empty())
+            .or(panel.inputs.first())
+            .map(|(_, input)| input.clone());
+        if let Some(input) = first {
+            input.update(cx, |input, cx| input.focus(window, cx));
+        }
         panel
+    }
+
+    /// Calls `on_enter` when Enter is pressed in any of the form's inputs.
+    pub fn on_enter<V: 'static>(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<V>,
+        on_enter: impl Fn(&mut V, &mut Window, &mut Context<V>) + Clone + 'static,
+    ) {
+        self.subscriptions = self
+            .inputs
+            .iter()
+            .map(|(_, input)| {
+                let on_enter = on_enter.clone();
+                cx.subscribe_in(
+                    input,
+                    window,
+                    move |this, _, event: &InputEvent, window, cx| {
+                        if matches!(event, InputEvent::PressEnter { .. }) {
+                            on_enter(this, window, cx);
+                        }
+                    },
+                )
+            })
+            .collect();
     }
 
     /// One input per text-like row that hasn't got one yet (records can be added).

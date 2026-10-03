@@ -284,8 +284,16 @@ impl Workbench {
             .map(|r| (r.path.clone(), r.title.clone()))
             .collect();
         let pages = page_items(&self.session.tree);
-        self.page_tree
-            .update(cx, |tree, cx| tree.set_items(pages, cx));
+        // Select the open Page's row (rows are the tree depth first, all expanded).
+        let current = self
+            .session
+            .page
+            .as_ref()
+            .and_then(|p| self.session.tree.iter().position(|r| r.path == p.path));
+        self.page_tree.update(cx, |tree, cx| {
+            tree.set_items(pages, cx);
+            tree.set_selected_index(current, cx);
+        });
         let tags = TagTree::run(
             self.session.wiki(),
             TagTreeInput {
@@ -355,6 +363,7 @@ impl Workbench {
                                     .id(SharedString::from(format!("row-{id}")))
                                     .w_full()
                                     .text_sm()
+                                    .when(is_current, |d| d.font_weight(FontWeight::SEMIBOLD))
                                     .when(placeholder, |d| {
                                         d.italic().text_color(cx.theme().muted_foreground)
                                     })
@@ -620,7 +629,7 @@ impl Workbench {
                 div()
                     .id(SharedString::from(format!("backlink-{from}")))
                     .text_sm()
-                    .text_color(theme.link)
+                    .text_color(theme.blue)
                     .cursor_pointer()
                     .child(self.session.title_of(&from))
                     .on_click(move |_, window, cx| {
@@ -640,7 +649,7 @@ impl Workbench {
                     .debug_selector(move || format!("link-{i}"))
                     .text_sm()
                     .cursor_pointer()
-                    .text_color(if broken { theme.danger } else { theme.link })
+                    .text_color(if broken { theme.danger } else { theme.blue })
                     .child(if broken {
                         format!("{target}  (broken)")
                     } else {
@@ -702,6 +711,11 @@ impl Render for Workbench {
             .on_action(
                 cx.listener(|this, _: &crate::overlay::QuickOpen, window, cx| {
                     this.open_quick_open(window, cx);
+                }),
+            )
+            .on_action(
+                cx.listener(|this, _: &crate::overlay::ApplyPlan, window, cx| {
+                    this.run_form(true, window, cx);
                 }),
             )
             .on_action(

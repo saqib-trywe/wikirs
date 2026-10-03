@@ -92,7 +92,7 @@ fn plan_lines(result: &Value, plan: &Value) -> Vec<OutcomeLine> {
     let mut lines = vec![if applied {
         line(Kind::Applied, "Applied:")
     } else {
-        line(Kind::DryRun, "Dry run, nothing written (a: apply):")
+        line(Kind::DryRun, "Dry run, nothing written.")
     }];
     let edits = plan["edits"].as_array().map_or(&[][..], Vec::as_slice);
     if edits.is_empty() {
@@ -202,7 +202,7 @@ mod tests {
             .map(|l| (l.kind, l.text))
             .collect();
         let want = [
-            (Kind::DryRun, "Dry run, nothing written (a: apply):"),
+            (Kind::DryRun, "Dry run, nothing written."),
             (Kind::Modify, "  modify a.md"),
             (Kind::Removed, "    -[[x]]"),
             (Kind::Added, "    +[[y]]"),

@@ -230,7 +230,7 @@ impl PageRenderer {
                     Mark::Link | Mark::BrokenLink | Mark::External => HighlightStyle {
                         color: Some(match mark {
                             Mark::BrokenLink => theme.danger,
-                            _ => theme.link,
+                            _ => theme.blue,
                         }),
                         underline: Some(UnderlineStyle {
                             thickness: px(1.),

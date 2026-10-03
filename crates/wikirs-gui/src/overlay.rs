@@ -27,7 +27,7 @@ use crate::{
     workbench::Workbench,
 };
 
-actions!(wikirs, [OpenPalette, QuickOpen, CloseOverlay]);
+actions!(wikirs, [OpenPalette, QuickOpen, CloseOverlay, ApplyPlan]);
 
 pub enum Overlay {
     Palette,
@@ -103,7 +103,11 @@ impl Workbench {
         if form.dry_run.is_some() {
             form.dry_run = Some(true);
         }
-        self.overlay = Some(Overlay::Form(Box::new(FormPanel::new(form, window, cx))));
+        let mut panel = FormPanel::new(form, window, cx);
+        panel.on_enter(window, cx, |this, window, cx| {
+            this.run_form(false, window, cx);
+        });
+        self.overlay = Some(Overlay::Form(Box::new(panel)));
         cx.notify();
     }
 
@@ -213,44 +217,7 @@ impl Workbench {
         let view = cx.entity();
         let theme = cx.theme().clone();
         let body: AnyElement = match self.overlay.as_ref()? {
-            Overlay::Palette => {
-                let query = self.query_text(cx);
-                v_flex()
-                    .child(Input::new(&self.query))
-                    .child(
-                        v_flex()
-                            .id("ops")
-                            .max_h(px(440.))
-                            .overflow_y_scroll()
-                            .children(Session::palette_matches(&query).into_iter().map(|op| {
-                                let view = view.clone();
-                                let name = op.name;
-                                ListItem::new(SharedString::from(format!("op-{name}")))
-                                    .child(
-                                        h_flex()
-                                            .gap_3()
-                                            .child(div().w(px(150.)).child(name))
-                                            .child(
-                                                div()
-                                                    .w(px(90.))
-                                                    .text_xs()
-                                                    .text_color(theme.muted_foreground)
-                                                    .child(format!("{:?}", op.kind).to_lowercase()),
-                                            )
-                                            .child(
-                                                div()
-                                                    .text_xs()
-                                                    .text_color(theme.muted_foreground)
-                                                    .child(op.description),
-                                            ),
-                                    )
-                                    .on_click(move |_, window, cx| {
-                                        view.update(cx, |this, cx| this.pick(name, window, cx));
-                                    })
-                            })),
-                    )
-                    .into_any_element()
-            }
+            Overlay::Palette => self.palette_view(&view, &theme, cx),
             Overlay::QuickOpen { .. } => {
                 let items = self.quick_open_items(cx);
                 v_flex()
@@ -283,6 +250,8 @@ impl Workbench {
                 .bg(hsla(0., 0., 0., 0.25))
                 .flex()
                 .justify_center()
+                // Only as tall as its content.
+                .items_start()
                 .child(
                     v_flex()
                         .id("overlay")
@@ -370,7 +339,7 @@ impl Workbench {
                     .when(panel.apply.is_some(), |d| {
                         d.child(
                             Button::new("apply")
-                                .label("Apply")
+                                .label("Apply  ⌘↩")
                                 .primary()
                                 .small()
                                 .on_click(cx.listener(|this, _, window, cx| {
@@ -392,6 +361,63 @@ impl Workbench {
             .into_any_element()
     }
 
+    /// The palette: the query, and the Operations matching it.
+    fn palette_view(
+        &self,
+        view: &Entity<Self>,
+        theme: &gpui_kit::component::theme::Theme,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let query = self.query_text(cx);
+        v_flex()
+            .child(Input::new(&self.query))
+            .child(
+                v_flex()
+                    .id("ops")
+                    .max_h(px(440.))
+                    .overflow_y_scroll()
+                    .children(
+                        Session::palette_matches(&query)
+                            .into_iter()
+                            .enumerate()
+                            .map(|(i, op)| {
+                                let view = view.clone();
+                                let name = op.name;
+                                // Enter picks the first match.
+                                ListItem::new(SharedString::from(format!("op-{name}")))
+                                    .selected(i == 0)
+                                    .child(
+                                        h_flex()
+                                            .gap_3()
+                                            .child(div().flex_none().w(px(170.)).child(name))
+                                            .child(
+                                                div()
+                                                    .flex_none()
+                                                    .w(px(90.))
+                                                    .text_xs()
+                                                    .text_color(theme.muted_foreground)
+                                                    .child(format!("{:?}", op.kind).to_lowercase()),
+                                            )
+                                            .child(
+                                                div()
+                                                    .min_w_0()
+                                                    .truncate()
+                                                    .text_xs()
+                                                    .text_color(theme.muted_foreground)
+                                                    .child(op.description),
+                                            ),
+                                    )
+                                    .on_click(move |_, window, cx| {
+                                        view.update(cx, |this, cx| {
+                                            this.pick(name, window, cx);
+                                        });
+                                    })
+                            }),
+                    ),
+            )
+            .into_any_element()
+    }
+
     fn page_list(
         items: Vec<(String, String, String)>,
         theme: &gpui_kit::component::theme::Theme,
@@ -402,25 +428,42 @@ impl Workbench {
             .id("pages")
             .max_h(px(440.))
             .overflow_y_scroll()
-            .children(items.into_iter().map(|(path, title, detail)| {
-                let view = view.clone();
-                ListItem::new(SharedString::from(format!("page-{path}")))
-                    .child(
-                        h_flex().gap_3().child(title).child(
-                            div()
-                                .text_xs()
-                                .text_color(theme.muted_foreground)
-                                .child(detail),
-                        ),
-                    )
-                    .on_click(move |_, window, cx| {
-                        view.update(cx, |this, cx| {
-                            this.overlay = None;
-                            this.open(&path, window, cx);
-                            this.focus_view(window, cx);
-                        });
-                    })
-            }))
+            .children(
+                items
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, (path, title, detail))| {
+                        let view = view.clone();
+                        // Enter opens the first.
+                        ListItem::new(SharedString::from(format!("page-{path}")))
+                            .selected(i == 0)
+                            .child(h_flex().gap_3().child(title).child({
+                                // Search hits mark their matches with `**`: bold them.
+                                let (text, matches) = wikirs_ui::snippet_matches(&detail);
+                                let bold = matches.into_iter().map(|r| {
+                                    let style = HighlightStyle {
+                                        font_weight: Some(FontWeight::BOLD),
+                                        color: Some(theme.foreground),
+                                        ..Default::default()
+                                    };
+                                    (r, style)
+                                });
+                                div()
+                                    .min_w_0()
+                                    .truncate()
+                                    .text_xs()
+                                    .text_color(theme.muted_foreground)
+                                    .child(StyledText::new(text).with_highlights(bold))
+                            }))
+                            .on_click(move |_, window, cx| {
+                                view.update(cx, |this, cx| {
+                                    this.overlay = None;
+                                    this.open(&path, window, cx);
+                                    this.focus_view(window, cx);
+                                });
+                            })
+                    }),
+            )
             .into_any_element()
     }
 }

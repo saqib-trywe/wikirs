@@ -279,7 +279,7 @@ fn palette_form_shows_the_plan_then_applies_it(cx: &mut TestAppContext) {
         }
         _ => unreachable!(),
     });
-    assert_eq!(outcome[0].text, "Dry run, nothing written (a: apply):");
+    assert_eq!(outcome[0].text, "Dry run, nothing written.");
     assert!(
         outcome.iter().any(|l| l.text == "  move a.md → z.md"),
         "{outcome:?}"

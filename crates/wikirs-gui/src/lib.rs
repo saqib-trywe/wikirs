@@ -22,7 +22,8 @@ use wikirs_core::Wiki;
 pub use workbench::Workbench;
 
 /// Binds the Workbench's keys (⌘ on macOS, ctrl elsewhere): S saves, E toggles
-/// source, K opens the palette, P quick open; Escape closes an overlay.
+/// source, K opens the palette, P quick open, Enter applies a dry run's Plan;
+/// Escape closes an overlay.
 pub fn bind_keys(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("secondary-s", workbench::Save, None),
@@ -30,6 +31,7 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("secondary-k", overlay::OpenPalette, None),
         KeyBinding::new("secondary-p", overlay::QuickOpen, None),
         KeyBinding::new("escape", overlay::CloseOverlay, Some("Workbench")),
+        KeyBinding::new("secondary-enter", overlay::ApplyPlan, Some("Workbench")),
     ]);
 }
 

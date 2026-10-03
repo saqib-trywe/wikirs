@@ -6,7 +6,7 @@ expression: fx.frame()
  wikirs   Engineering / Rust / Async notes
 ┌ Pages ───────────────────┐┌ Async notes ───────────────────────────────────────────┐┌────────────────────────────────┐
 │Engineering   ┌ move_page (a apply · Esc) ─────────────────────────────────────────────────────────────┐              │
-│  Rust        │Dry run, nothing written (a: apply):                                                    │              │
+│  Rust        │Dry run, nothing written.                                                               │              │
 │    Async note│  modify eng/rust.md                                                                    │              │
 │Inbox         │    -[[eng/rust/async|Async]]                                                           │              │
 │              │    +[[eng/async|Async]]                                                                │              │
