@@ -58,6 +58,9 @@ pub enum PickKind {
     Open,
     Search,
     Backlinks,
+    /// The open Page's tasks: Enter ticks one (its marker's range is the
+    /// item's first field, as `start..end`).
+    Tasks,
 }
 
 pub struct Picker {
@@ -343,6 +346,7 @@ impl App {
             KeyCode::Char('o') => self.open_picker(PickKind::Open),
             KeyCode::Char('/') => self.open_picker(PickKind::Search),
             KeyCode::Char('b') => self.open_picker(PickKind::Backlinks),
+            KeyCode::Char('t') => self.open_picker(PickKind::Tasks),
             KeyCode::Char('e') => {
                 if let Some(page) = &self.session.page {
                     let mut area = TextArea::new(page.buffer.lines().map(String::from).collect());
@@ -470,6 +474,7 @@ impl App {
                 .into_iter()
                 .map(|(path, title)| (path.clone(), title, path))
                 .collect(),
+            PickKind::Tasks => self.task_items(),
             PickKind::Backlinks => self.session.page.as_ref().map_or_else(Vec::new, |p| {
                 p.backlinks
                     .iter()
@@ -487,6 +492,16 @@ impl App {
         });
     }
 
+    /// The open Page's tasks as picker rows: `(marker range, [ ]/[x], text)`.
+    fn task_items(&self) -> Vec<(String, String, String)> {
+        let Some(page) = &self.session.page else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        collect_tasks(&page.doc.blocks, &page.buffer, &mut out);
+        out
+    }
+
     fn pick_key(&mut self, key: KeyEvent) {
         let Mode::Pick(picker) = &mut self.mode else {
             return;
@@ -501,6 +516,25 @@ impl App {
                 picker.sel = (picker.sel + 1).min(picker.items.len().saturating_sub(1));
             }
             KeyCode::Up => picker.sel = picker.sel.saturating_sub(1),
+            KeyCode::Enter if picker.kind == PickKind::Tasks => {
+                let range = picker.items.get(picker.sel).and_then(|(r, _, _)| {
+                    let (start, end) = r.split_once("..")?;
+                    Some(start.parse().ok()?..end.parse().ok()?)
+                });
+                if let Some(range) = range {
+                    let sel = picker.sel;
+                    self.session.toggle_task(range);
+                    self.after_change();
+                    // Stay open on the same task, its state redrawn.
+                    let items = self.task_items();
+                    if let Mode::Pick(picker) = &mut self.mode {
+                        picker.items.clone_from(&items);
+                        picker.all = items;
+                        picker.sel = sel;
+                    }
+                }
+                return;
+            }
             KeyCode::Enter => {
                 if let Some((path, _, _)) = picker.items.get(picker.sel).cloned() {
                     self.mode = Mode::View;
@@ -508,11 +542,11 @@ impl App {
                 }
                 return;
             }
-            KeyCode::Backspace if picker.kind != PickKind::Backlinks => {
+            KeyCode::Backspace if !matches!(picker.kind, PickKind::Backlinks | PickKind::Tasks) => {
                 picker.query.pop();
                 requery = true;
             }
-            KeyCode::Char(c) if picker.kind != PickKind::Backlinks => {
+            KeyCode::Char(c) if !matches!(picker.kind, PickKind::Backlinks | PickKind::Tasks) => {
                 picker.query.push(c);
                 requery = true;
             }
@@ -739,6 +773,36 @@ impl App {
                 });
                 self.show(&title, &outcome, apply);
             }
+        }
+    }
+}
+
+/// Every task in `blocks`, nested ones included, with its line's text.
+fn collect_tasks(
+    blocks: &[wikirs_core::document::Block],
+    text: &str,
+    out: &mut Vec<(String, String, String)>,
+) {
+    use wikirs_core::document::Block;
+    for block in blocks {
+        match block {
+            Block::List { items, .. } => {
+                for item in items {
+                    if let (Some(done), Some(range)) = (item.task, &item.task_range) {
+                        let line = text[range.end..].lines().next().unwrap_or("").trim();
+                        out.push((
+                            format!("{}..{}", range.start, range.end),
+                            if done { "[x]" } else { "[ ]" }.to_string(),
+                            line.to_string(),
+                        ));
+                    }
+                    collect_tasks(&item.blocks, text, out);
+                }
+            }
+            Block::Quote { blocks } | Block::Alert { blocks, .. } => {
+                collect_tasks(blocks, text, out)
+            }
+            _ => {}
         }
     }
 }

@@ -587,3 +587,31 @@ fn a_broken_embed_keeps_no_room_for_a_picture() {
     assert_eq!(rendered.images, [(1, "pics/gone.png".to_string())]);
     assert_eq!(rendered.lines.len(), 1 + wikirs_tui::render::IMAGE_ROWS);
 }
+
+#[test]
+fn t_lists_the_tasks_and_enter_ticks_one() {
+    let mut fx = Fixture::new();
+    fx.open("eng/rust/async");
+    fx.keys("t");
+    let Mode::Pick(picker) = &fx.app.mode else {
+        panic!("no task list")
+    };
+    let rows: Vec<_> = picker
+        .items
+        .iter()
+        .map(|i| (i.1.as_str(), i.2.as_str()))
+        .collect();
+    assert_eq!(rows, [("[x]", "done"), ("[ ]", "todo")]);
+    fx.keys("<Down><Enter>");
+    assert!(
+        fx.read("eng/rust/async").contains("- [x] todo"),
+        "saved at once"
+    );
+    let Mode::Pick(picker) = &fx.app.mode else {
+        panic!("closed after ticking")
+    };
+    assert_eq!((picker.sel, picker.items[1].1.as_str()), (1, "[x]"));
+    fx.keys("<Up><Enter><Esc>");
+    assert!(fx.read("eng/rust/async").contains("- [ ] done"));
+    assert!(matches!(fx.app.mode, Mode::View));
+}

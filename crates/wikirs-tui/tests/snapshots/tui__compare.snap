@@ -1,6 +1,6 @@
 ---
 source: crates/wikirs-tui/tests/tui.rs
-assertion_line: 358
+assertion_line: 389
 expression: fx.frame()
 ---
  wikirs   Inbox  ● unsaved
@@ -32,4 +32,4 @@ expression: fx.frame()
 │                          ││                                                        ││                                │
 │                          ││                                                        ││                                │
 └──────────────────────────┘└────────────────────────────────────────────────────────┘└────────────────────────────────┘
- j/k move  Tab links  1-9 follow  o open  / search  b backlinks  e edit  E $EDITOR  R move  : cmd  ^k ops  q quit
+ Tab links  1-9 follow  o open  / search  b backlinks  t tasks  e edit  E $EDITOR  R move  : cmd  ^k ops  q quit

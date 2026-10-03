@@ -16,7 +16,7 @@ The shape of the TUI Interface. Decided in [TUI layout and editing prototype](..
 - j/k move, and Tab cycles focus between the tree and the Links panel. Enter opens or follows.
 - **Numbered Links** (from variant C): Links in the rendered Page are shown as `[1] [2] …`. Typing the number follows that Link.
 - Following a Broken Link offers to create the Page (`create_page{path}`).
-- `o` quick open (`list_pages` / `search`), `b` Backlinks popup.
+- `o` quick open (`list_pages` / `search`), `b` Backlinks popup, `t` the Page's tasks: Enter ticks one (saved at once unless there are unsaved edits).
 
 ## Editing
 

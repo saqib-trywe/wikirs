@@ -18,7 +18,7 @@ use crate::{
     render,
 };
 
-const HINTS: &str = "j/k move  Tab links  1-9 follow  o open  / search  b backlinks  e edit  E $EDITOR  R move  : cmd  ^k ops  q quit";
+const HINTS: &str = "Tab links  1-9 follow  o open  / search  b backlinks  t tasks  e edit  E $EDITOR  R move  : cmd  ^k ops  q quit";
 
 pub fn draw(f: &mut Frame, app: &App) {
     let [top, banner, main, status] = Layout::vertical([
@@ -357,6 +357,7 @@ fn pick(f: &mut Frame, picker: &Picker) {
         PickKind::Open => " Open a Page (list_pages) ",
         PickKind::Search => " Search ",
         PickKind::Backlinks => " Backlinks (Enter opens) ",
+        PickKind::Tasks => " Tasks (Enter ticks, Esc closes) ",
     };
     let area = popup_area(f, 80, 18);
     let items: Vec<ListItem> = picker
@@ -371,7 +372,7 @@ fn pick(f: &mut Frame, picker: &Picker) {
         .collect();
     let mut state = ListState::default().with_selected(Some(picker.sel));
     let list = List::new(items).highlight_style(Style::new().reversed());
-    if picker.kind == PickKind::Backlinks {
+    if matches!(picker.kind, PickKind::Backlinks | PickKind::Tasks) {
         f.render_stateful_widget(list.block(Block::bordered().title(title)), area, &mut state);
     } else {
         let [q, rest] = Layout::vertical([Constraint::Length(3), Constraint::Fill(1)]).areas(area);
