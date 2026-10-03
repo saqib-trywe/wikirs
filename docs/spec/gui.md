@@ -41,7 +41,7 @@ This is the banner from the prototype (Reload / Keep mine / Compare). In the rea
 
 ## As built
 
-`wikirs gui [page]` (crate `wikirs-gui`, gpui-kit `=0.6.6`) drives the same open-Page `Session` as the TUI (`wikirs-ui`). ⌘ is ctrl on Linux and Windows.
+`wikirs gui [page]` (crate `wikirs-gui`, gpui-kit `=0.7.0` on gpui `=0.3.7`) drives the same open-Page `Session` as the TUI (`wikirs-ui`). ⌘ is ctrl on Linux and Windows.
 - **Keys**: ⌘S saves, ⌘E toggles source and preview, ⌘K opens the palette, ⌘P quick open; Escape closes an overlay. In a form the first empty field has the focus, Enter runs it, and ⌘↩ applies a dry run's Plan.
 - **Palette forms** come from `wikirs-ui`'s form model, with one row per value and records you can add to. A mutation opens as a dry run: Run shows the Plan (each splice as `-old` / `+new`), and Apply writes it. These forms are also the move/rename, delete, new-Page and rename-Tag dialogs.
 - **Context menus**:

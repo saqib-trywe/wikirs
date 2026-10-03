@@ -56,7 +56,7 @@ Adapters depend only on `wikirs-core` (and `wikirs-ui`), never on each other, ex
 
 ## Pins and settings
 
-- `[workspace.dependencies]` shares versions. `gpui-kit` is pinned **exactly** (`=0.6.x`), and only `wikirs-gui` uses it.
+- `[workspace.dependencies]` shares versions. `gpui-kit` and the `gpui-pre` snapshot it needs are pinned **exactly** (now `=0.7.0` and `=0.3.7`), and only `wikirs-gui` uses them.
 - `Cargo.lock` is committed. `rust-toolchain.toml` pins a stable version, and a gpui-kit upgrade is one PR that bumps both the pin and the toolchain.
 - Edition 2024. `[workspace.lints]`: `unsafe_code = "forbid"`, and clippy `pedantic` as warnings.
 

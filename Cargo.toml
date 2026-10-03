@@ -50,9 +50,9 @@ ratatui = "0.30"
 ratatui-textarea = "0.9"
 # Pinned exactly: gpui and gpui-kit break weekly (workspace.md). An upgrade is
 # one PR that moves both pins together.
-gpui-kit = { version = "=0.6.6", features = ["tree-sitter-markdown", "tree-sitter-markdown-inline"] }
-gpui = { package = "gpui-pre", version = "=0.3.6" }
-# The completion types gpui-kit 0.6.6's editor speaks.
+gpui-kit = { version = "=0.7.0", features = ["tree-sitter-markdown", "tree-sitter-markdown-inline"] }
+gpui = { package = "gpui-pre", version = "=0.3.7" }
+# The completion types gpui-kit 0.7's editor speaks.
 lsp-types = { version = "0.97", features = ["proposed"] }
 
 [workspace.lints.rust]
