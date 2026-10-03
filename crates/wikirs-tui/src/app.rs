@@ -800,7 +800,7 @@ fn collect_tasks(
                 }
             }
             Block::Quote { blocks } | Block::Alert { blocks, .. } => {
-                collect_tasks(blocks, text, out)
+                collect_tasks(blocks, text, out);
             }
             _ => {}
         }
