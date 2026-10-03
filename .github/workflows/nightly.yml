@@ -1,0 +1,22 @@
+name: nightly
+
+# Long property-test runs (testing.md): the same properties as every push, with
+# many more generated cases. Also runnable by hand from the Actions tab.
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  proptest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      PROPTEST_CASES: "3000"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.98.1
+      - uses: Swatinem/rust-cache@v2
+      # Index and Plan properties, and the document model against the Index's parse.
+      - run: cargo test --release -p wikirs-core --test properties
+      - run: cargo test --release -p wikirs-core --lib document::tests::agrees_with_the_index

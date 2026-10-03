@@ -104,6 +104,37 @@ pub fn with_path(raw: &str, wiki: bool, new_path: &str) -> Option<String> {
     ))
 }
 
+/// Where a link reference definition's destination is: `path.md` in
+/// `[label]: path.md "title"` (or `<a b.md>`, brackets included).
+fn definition_dest(def: &str) -> Option<std::ops::Range<usize>> {
+    let after = def.find("]:")? + 2;
+    let start = after + (def[after..].len() - def[after..].trim_start().len());
+    let tail = &def[start..];
+    let len = if tail.starts_with('<') {
+        tail.find('>')? + 1
+    } else {
+        tail.find(char::is_whitespace).unwrap_or(tail.len())
+    };
+    (len > 0).then_some(start..start + len)
+}
+
+/// A definition's path as written, decoded (like [`written_path`] for `[x](…)`).
+pub(crate) fn definition_written_path(def: &str) -> Option<String> {
+    written_path(&format!("[x]({})", &def[definition_dest(def)?]), false)
+}
+
+/// The definition with its path replaced, keeping `#heading`, title and form.
+pub(crate) fn definition_with_path(def: &str, new_path: &str) -> Option<String> {
+    let dest = definition_dest(def)?;
+    let link = with_path(&format!("[x]({})", &def[dest.clone()]), false, new_path)?;
+    let new_dest = link.strip_prefix("[x](")?.strip_suffix(')')?;
+    Some(format!(
+        "{}{new_dest}{}",
+        &def[..dest.start],
+        &def[dest.end..]
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -148,5 +179,22 @@ mod tests {
             written_path("[[eng/rust#h|x]]", true).as_deref(),
             Some("eng/rust")
         );
+    }
+
+    #[test]
+    fn definitions_rewrite_their_path_only() {
+        assert_eq!(
+            definition_written_path("[r]: ../a%20b.md#h \"t\"").as_deref(),
+            Some("../a b.md")
+        );
+        assert_eq!(
+            definition_with_path("[r]: ../a.md#h \"t\"", "c/d e.md").as_deref(),
+            Some("[r]: c/d%20e.md#h \"t\"")
+        );
+        assert_eq!(
+            definition_with_path("[R]:   <a b.md>", "x y.md").as_deref(),
+            Some("[R]:   <x y.md>")
+        );
+        assert_eq!(definition_with_path("[r]:", "x.md"), None);
     }
 }

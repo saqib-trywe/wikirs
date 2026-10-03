@@ -42,8 +42,8 @@ Adapters depend only on `wikirs-core` (and `wikirs-ui`), never on each other, ex
 
 | Crate | Feature | Effect |
 |---|---|---|
-| `wikirs` (bin) | `default = ["gui", "tui", "serve", "mcp"]` | the full build |
-| | `serve` | `wikirs-http` (tokio, axum); implies `mcp` |
+| `wikirs` (bin) | `default = ["mcp", "http", "tui", "gui"]` | the full build |
+| | `http` | `wikirs-http` (tokio, axum) for the `serve` subcommand; implies `mcp` |
 | | `mcp` | `wikirs-mcp` (tokio, rmcp) |
 | | `tui` | `wikirs-tui` (ratatui) |
 | | `gui` | `wikirs-gui` (gpui, gpui-kit) |

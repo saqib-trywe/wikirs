@@ -23,7 +23,7 @@ use crate::{
 /// Bump when the tables change; a mismatch rebuilds the Index at open.
 const INDEX_SCHEMA: i64 = 3;
 /// Bump when what's extracted from a file changes (Title rules, parser version).
-const PARSER_VERSION: i64 = 2;
+const PARSER_VERSION: i64 = 3;
 
 pub struct Index {
     conn: Connection,
@@ -859,7 +859,8 @@ fn upsert(
     };
     tx.execute(
         "INSERT INTO pages_fts (path, title, body) VALUES (?1, ?2, ?3)",
-        params![path, title, text],
+        // Frontmatter is metadata: it shouldn't match searches or show in snippets.
+        params![path, title, crate::markdown::without_frontmatter(&text)],
     )
     .map_err(|e| db_err(&e))?;
     for h in &parsed.headings {

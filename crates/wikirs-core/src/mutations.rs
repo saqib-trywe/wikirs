@@ -13,7 +13,7 @@ use crate::{
     links::{LinkStatus, TargetKind, normalize_dest, resolve},
     markdown::{self, TagSource, valid_tag},
     plan::{Edit, Plan, Splice, Tx, mutate},
-    rewrite::{relative, with_path, written_path},
+    rewrite::{definition_with_path, definition_written_path, relative, with_path, written_path},
     wiki::{PagePath, check_case_conflict},
 };
 
@@ -187,6 +187,7 @@ pub(crate) fn rewrite_links_for(tx: &mut Tx, moved: &BTreeMap<String, String>) -
         let Some(file) = tx.read(&src)? else { continue };
         let new_src = moved.get(&src).unwrap_or(&src).clone();
         let mut splices = Vec::new();
+        let mut rewritten_defs = BTreeSet::new();
         for link in markdown::parse(&file.content).links {
             let dest = normalize_dest(&src, &link);
             let resolved = resolve(wiki.index().conn(), dest.as_deref(), link.wiki, None)?;
@@ -196,12 +197,32 @@ pub(crate) fn rewrite_links_for(tx: &mut Tx, moved: &BTreeMap<String, String>) -
                 _ => file_of(&resolved.target, resolved.target_kind),
             };
             let new_abs = moved.get(&old_abs).unwrap_or(&old_abs).clone();
-            let Some(current) = written_path(&link.raw, link.wiki) else {
+            // A reference-style Link's path is in its definition, which is
+            // rewritten instead (once, however many Links use it).
+            let definition = link
+                .reference
+                .as_deref()
+                .and_then(|label| markdown::definition_span(&file.content, label));
+            if definition
+                .as_ref()
+                .is_some_and(|span| rewritten_defs.contains(&span.start))
+            {
+                continue;
+            }
+            let target = definition
+                .as_ref()
+                .map_or(link.raw.as_str(), |span| &file.content[span.clone()]);
+            let current = if definition.is_some() {
+                definition_written_path(target)
+            } else {
+                written_path(&link.raw, link.wiki)
+            };
+            let Some(current) = current else {
                 if new_abs != old_abs || new_src != src {
                     tx.warn(
                         "link_not_rewritten",
                         format!(
-                            "{}: reference-style Link `{}` must be updated by hand",
+                            "{}: Link `{}` must be updated by hand",
                             display(&src),
                             link.raw
                         ),
@@ -209,24 +230,23 @@ pub(crate) fn rewrite_links_for(tx: &mut Tx, moved: &BTreeMap<String, String>) -
                 }
                 continue;
             };
-            let wanted = if link.wiki {
-                if new_abs == old_abs {
-                    continue;
-                }
-                if is_page_file(&current) {
-                    new_abs.clone()
-                } else {
-                    display(&new_abs)
-                }
-            } else if current.starts_with('/') {
-                if new_abs == old_abs {
-                    continue;
-                }
-                format!("/{new_abs}")
-            } else {
-                relative(dir_of(&new_src), &new_abs)
+            let Some(wanted) = wanted_path(link.wiki, &current, &old_abs, &new_abs, &new_src)
+            else {
+                continue;
             };
             if current == wanted {
+                continue;
+            }
+            if let Some(span) = definition {
+                let Some(new_def) = definition_with_path(target, &wanted) else {
+                    continue;
+                };
+                rewritten_defs.insert(span.start);
+                splices.push(Splice {
+                    range: [span.start, span.end],
+                    old: target.to_string(),
+                    new: new_def,
+                });
                 continue;
             }
             let Some(new_raw) = with_path(&link.raw, link.wiki, &wanted) else {
@@ -239,6 +259,8 @@ pub(crate) fn rewrite_links_for(tx: &mut Tx, moved: &BTreeMap<String, String>) -
             });
         }
         if !splices.is_empty() {
+            // Definitions usually come after the Links that use them.
+            splices.sort_by_key(|s| s.range[0]);
             count += splices.len();
             tx.edit(Edit::Modify {
                 path: src,
@@ -248,6 +270,32 @@ pub(crate) fn rewrite_links_for(tx: &mut Tx, moved: &BTreeMap<String, String>) -
         }
     }
     Ok(count)
+}
+
+/// The path a Link should now be written with, or `None` to leave it: a
+/// wikilink or root-absolute Link changes only if its target moved; a relative
+/// one is recomputed from its (maybe moved) Page.
+fn wanted_path(
+    wiki: bool,
+    current: &str,
+    old_abs: &str,
+    new_abs: &str,
+    new_src: &str,
+) -> Option<String> {
+    if wiki {
+        if new_abs == old_abs {
+            return None;
+        }
+        Some(if is_page_file(current) {
+            new_abs.to_string()
+        } else {
+            display(new_abs)
+        })
+    } else if current.starts_with('/') {
+        (new_abs != old_abs).then(|| format!("/{new_abs}"))
+    } else {
+        Some(relative(dir_of(new_src), new_abs))
+    }
 }
 
 // -------------------------------------------------------------- delete_page

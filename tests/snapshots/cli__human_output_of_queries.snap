@@ -1,5 +1,6 @@
 ---
 source: tests/cli.rs
+assertion_line: 193
 expression: shown
 ---
 $ wikirs list-pages
@@ -37,7 +38,7 @@ eng.md:3:22: broken_link: `missing` does not exist
 
 $ wikirs search borrowing
 eng/rust  Rust
-    --- tags: [lang] --- # Rust ## Ownership **Borrowing**, see [Engineering](../eng.md).
+    # Rust ## Ownership **Borrowing**, see [Engineering](../eng.md).
 
 $ wikirs get-config links.syntax
 links.syntax = "standard"  (default)

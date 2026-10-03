@@ -32,6 +32,9 @@ pub struct Cli {
     /// Print the `{ result, warnings }` envelope (or the error) as JSON on stdout.
     #[arg(long, global = true)]
     pub json: bool,
+    /// Say on stderr which Wiki was chosen, and how.
+    #[arg(long, global = true)]
+    pub verbose: bool,
     #[command(subcommand)]
     pub command: Top,
 }
@@ -113,6 +116,7 @@ const OURS: [&str; 7] = ["mcp", "serve", "tui", "gui", "config", "catalogue", "h
 pub struct Invocation {
     pub wiki: Option<String>,
     pub json: bool,
+    pub verbose: bool,
     /// `check --fail-on-diagnostics`: exit 7 if there are any.
     pub fail_on_diagnostics: bool,
     pub command: Result<Top, Error>,
@@ -134,10 +138,22 @@ pub fn operation_subcommands() -> Vec<String> {
 /// line) makes every other argument optional and in conflict with `--input`,
 /// since the JSON carries them.
 #[must_use]
-pub fn command(relaxed: bool) -> clap::Command {
+pub fn command(relaxed: bool, not_built: &[&str]) -> clap::Command {
     let mut cmd = Cli::command();
+    // A subcommand whose feature is off still shows, marked (workspace.md).
+    for name in not_built {
+        cmd = cmd.mut_subcommand(*name, |sub| {
+            let about = sub.get_about().map(ToString::to_string).unwrap_or_default();
+            sub.about(format!("{about} (not built in)"))
+        });
+    }
     for name in operation_subcommands() {
+        // The registry's description, as the catalogue, MCP and HTTP show it.
+        let about = wikirs_core::find(&name.replace('-', "_")).map(|op| op.description);
         cmd = cmd.mut_subcommand(&name, |mut sub| {
+            if let Some(about) = about {
+                sub = sub.about(about);
+            }
             let others: Vec<clap::Id> = sub.get_arguments().map(|a| a.get_id().clone()).collect();
             let groups: Vec<clap::Id> = sub.get_groups().map(|g| g.get_id().clone()).collect();
             let mut input = Arg::new(INPUT)
@@ -176,18 +192,26 @@ pub fn command(relaxed: bool) -> clap::Command {
 
 /// Parses the process's command line, exiting on a usage error (code 2).
 #[must_use]
-pub fn parse() -> Invocation {
-    parse_from(std::env::args_os())
+/// `not_built` names the subcommands whose feature this binary was built without.
+pub fn parse(not_built: &[&str]) -> Invocation {
+    parse_from_with(std::env::args_os(), not_built)
 }
 
 /// [`parse`] over given arguments (`args[0]` is the binary).
 #[must_use]
 pub fn parse_from(args: impl IntoIterator<Item = impl Into<OsString>>) -> Invocation {
+    parse_from_with(args, &[])
+}
+
+fn parse_from_with(
+    args: impl IntoIterator<Item = impl Into<OsString>>,
+    not_built: &[&str],
+) -> Invocation {
     let args: Vec<OsString> = args.into_iter().map(Into::into).collect();
     let mentions_input = args
         .iter()
         .any(|a| a == "--input" || a.to_string_lossy().starts_with("--input="));
-    let matches = command(mentions_input).get_matches_from(&args);
+    let matches = command(mentions_input, not_built).get_matches_from(&args);
     let input = matches.subcommand().and_then(|(name, sub)| {
         // Subcommands that aren't Operations have no `--input`.
         let raw = sub.try_get_one::<String>(INPUT).ok().flatten()?;
@@ -201,7 +225,7 @@ pub fn parse_from(args: impl IntoIterator<Item = impl Into<OsString>>) -> Invoca
         // Also when `--input` was only an argument's value: a missing
         // argument then fails here, as a usage error.
         Ok(Cli::from_arg_matches(&matches)
-            .unwrap_or_else(|e| e.format(&mut command(false)).exit())
+            .unwrap_or_else(|e| e.format(&mut command(false, not_built)).exit())
             .command)
     };
     let fail_on_diagnostics = matches
@@ -210,6 +234,7 @@ pub fn parse_from(args: impl IntoIterator<Item = impl Into<OsString>>) -> Invoca
     Invocation {
         wiki: matches.get_one::<String>("wiki").cloned(),
         json: matches.get_flag("json"),
+        verbose: matches.get_flag("verbose"),
         fail_on_diagnostics,
         command,
     }
@@ -475,11 +500,11 @@ mod tests {
 
     #[test]
     fn input_conflicts_with_the_arguments_it_replaces() {
-        let err = command(true)
+        let err = command(true, &[])
             .try_get_matches_from(["wikirs", "move-page", "a", "--input", "{}"])
             .unwrap_err();
         assert_eq!(err.kind(), clap::error::ErrorKind::ArgumentConflict);
-        let ok = command(true).try_get_matches_from([
+        let ok = command(true, &[]).try_get_matches_from([
             "wikirs",
             "check",
             "--fail-on-diagnostics",
@@ -487,9 +512,28 @@ mod tests {
             "{}",
         ]);
         assert!(ok.is_ok(), "{ok:?}");
-        let err = command(false)
+        let err = command(false, &[])
             .try_get_matches_from(["wikirs", "move-page", "a"])
             .unwrap_err();
         assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+    }
+
+    #[test]
+    fn help_uses_registry_descriptions_and_marks_what_is_not_built() {
+        let mut cmd = command(false, &["gui", "serve"]);
+        let help = |cmd: &mut clap::Command, name: &str| {
+            cmd.find_subcommand_mut(name)
+                .and_then(|s| s.get_about().map(ToString::to_string))
+                .unwrap_or_default()
+        };
+        assert_eq!(
+            help(&mut cmd, "list-spaces"),
+            wikirs_core::find("list_spaces").unwrap().description
+        );
+        assert_ne!(help(&mut cmd, "tag-page"), help(&mut cmd, "untag-page"));
+        assert!(help(&mut cmd, "gui").ends_with("(not built in)"));
+        assert!(help(&mut cmd, "serve").ends_with("(not built in)"));
+        assert!(!help(&mut cmd, "tui").contains("not built in"));
+        assert!(op(&["--verbose", "list-spaces"]).verbose);
     }
 }

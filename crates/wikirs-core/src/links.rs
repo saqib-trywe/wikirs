@@ -77,10 +77,15 @@ fn candidates(dest: &str, wiki: bool) -> Vec<(String, TargetKind)> {
     }
     if wiki {
         // `[[eng/rust]]` names a Page; `[[eng/diagram.png]]` an Attachment.
-        vec![
-            (format!("{dest}.md"), TargetKind::Page),
-            (dest.to_string(), TargetKind::Attachment),
-        ]
+        // The likelier one goes first: it's what a broken Link reports.
+        let page = (format!("{dest}.md"), TargetKind::Page);
+        let attachment = (dest.to_string(), TargetKind::Attachment);
+        let file_name = dest.rsplit('/').next().unwrap_or(dest);
+        if file_name.contains('.') {
+            vec![attachment, page]
+        } else {
+            vec![page, attachment]
+        }
     } else {
         vec![(dest.to_string(), TargetKind::Attachment)]
     }

@@ -44,6 +44,9 @@ pub struct RawLink {
     /// The target path as written, percent-decoded, without `#heading`.
     pub target: String,
     pub heading: Option<String>,
+    /// The label of a reference-style Link (`[text][label]`), whose path is in
+    /// its definition (`[label]: path.md`).
+    pub reference: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -121,11 +124,13 @@ pub fn parse(text: &str) -> Parsed {
                 Tag::Link {
                     link_type,
                     dest_url,
+                    id,
                     ..
                 }
                 | Tag::Image {
                     link_type,
                     dest_url,
+                    id,
                     ..
                 },
             ) => {
@@ -134,7 +139,7 @@ pub fn parse(text: &str) -> Parsed {
                     continue;
                 }
                 let embed = text[range.clone()].starts_with('!');
-                if let Some(link) = raw_link(text, range, &dest_url, link_type, embed) {
+                if let Some(link) = raw_link(text, range, &dest_url, &id, link_type, embed) {
                     out.links.push(link);
                 }
             }
@@ -219,6 +224,7 @@ pub(crate) fn raw_link(
     text: &str,
     range: Range<usize>,
     dest: &str,
+    id: &str,
     link_type: LinkType,
     embed: bool,
 ) -> Option<RawLink> {
@@ -249,7 +255,32 @@ pub(crate) fn raw_link(
         embed,
         target,
         heading,
+        reference: matches!(
+            link_type,
+            LinkType::Reference | LinkType::Collapsed | LinkType::Shortcut
+        )
+        .then(|| id.to_string()),
     })
+}
+
+/// Where the definition of reference label `label` is (`[label]: path.md`).
+#[must_use]
+pub fn definition_span(text: &str, label: &str) -> Option<Range<usize>> {
+    Parser::new_ext(text, options())
+        .reference_definitions()
+        .get(label)
+        .map(|def| def.span.clone())
+}
+
+/// The Page's text without its frontmatter block (what search indexes).
+#[must_use]
+pub fn without_frontmatter(text: &str) -> &str {
+    // Frontmatter can only be the first event; a Start event's range is the
+    // whole block.
+    match Parser::new_ext(text, options()).into_offset_iter().next() {
+        Some((Event::Start(Tag::MetadataBlock(_)), range)) => &text[range.end..],
+        _ => text,
+    }
 }
 
 fn has_scheme(dest: &str) -> bool {

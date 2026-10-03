@@ -69,4 +69,4 @@ Behaviour itself is covered by the parity suite.
 |---|---|---|
 | every push | Linux | `cargo test --all-features` (with gpui's Linux deps), `clippy`, `fmt`, `cargo check --no-default-features` |
 | every push | macOS, Windows | `cargo test --workspace` with default features, so the GUI's headless tests run there too (paths, case, rename and file-lock behaviour differ on these platforms) |
-| nightly | Linux | long proptest runs (more cases) |
+| nightly | Linux | long proptest runs: `PROPTEST_CASES=3000` (`.github/workflows/nightly.yml`, also runnable by hand) |

@@ -419,6 +419,7 @@ impl Builder {
             Tag::Link {
                 link_type,
                 dest_url,
+                id,
                 ..
             } => {
                 if matches!(link_type, LinkType::Autolink | LinkType::Email) {
@@ -426,7 +427,7 @@ impl Builder {
                     inlines(Span::External(dest_url.into_string()))
                 } else {
                     let embed = text[range.clone()].starts_with('!');
-                    match raw_link(text, range, &dest_url, link_type, embed) {
+                    match raw_link(text, range, &dest_url, &id, link_type, embed) {
                         Some(link) => inlines(Span::Link(self.add_link(link))),
                         None => inlines(Span::External(dest_url.into_string())),
                     }
@@ -435,10 +436,11 @@ impl Builder {
             Tag::Image {
                 link_type,
                 dest_url,
+                id,
                 ..
             } => {
                 let embed = text[range.clone()].starts_with('!');
-                let link = raw_link(text, range, &dest_url, link_type, embed)
+                let link = raw_link(text, range, &dest_url, &id, link_type, embed)
                     .map(|link| self.add_link(link));
                 inlines(Span::Image {
                     link,

@@ -6,21 +6,49 @@ use std::process::ExitCode;
 use wikirs_cli::{ConfigCommand, Output, ServeArgs, Top, print_error};
 use wikirs_core::{Command, Discovery, Error, Wiki, config_base, resolve_root};
 
-fn open_wiki(flag: Option<&str>, discovery: Discovery) -> Result<Wiki, Error> {
+/// Subcommands whose feature this binary was built without (`--help` marks them).
+fn not_built() -> Vec<&'static str> {
+    [
+        ("mcp", cfg!(feature = "mcp")),
+        ("serve", cfg!(feature = "http")),
+        ("tui", cfg!(feature = "tui")),
+        ("gui", cfg!(feature = "gui")),
+    ]
+    .into_iter()
+    .filter(|(_, built)| !built)
+    .map(|(name, _)| name)
+    .collect()
+}
+
+fn open_wiki(flag: Option<&str>, discovery: Discovery, verbose: bool) -> Result<Wiki, Error> {
     let env = std::env::var("WIKIRS_WIKI").ok();
     let cwd = std::env::current_dir().map_err(|e| Error::io(None, &e))?;
-    Wiki::open(resolve_root(
-        flag,
-        env.as_deref(),
-        &cwd,
-        discovery,
-        &config_base(),
-    )?)
+    let root = resolve_root(flag, env.as_deref(), &cwd, discovery, &config_base())?;
+    if verbose {
+        // Which of the resolution steps (wiki-selection.md) chose it.
+        let how = if flag.is_some() {
+            "--wiki"
+        } else if env.is_some() {
+            "WIKIRS_WIKI"
+        } else if matches!(discovery, Discovery::Init) {
+            "the current directory"
+        } else if root.join(".wikirs").is_dir()
+            && cwd.starts_with(&root)
+            && !matches!(discovery, Discovery::Mcp)
+        {
+            "the nearest folder with .wikirs/"
+        } else {
+            "default_wiki"
+        };
+        eprintln!("wiki: {} (from {how})", root.display());
+    }
+    Wiki::open(root)
 }
 
 fn main() -> ExitCode {
-    let invocation = wikirs_cli::parse();
+    let invocation = wikirs_cli::parse(&not_built());
     let (flag, json) = (invocation.wiki.as_deref(), invocation.json);
+    let verbose = invocation.verbose;
     let command = match invocation.command {
         Ok(command) => command,
         Err(err) => return print_error(&err, json),
@@ -37,10 +65,10 @@ fn main() -> ExitCode {
                 json,
                 fail_on_diagnostics: invocation.fail_on_diagnostics,
             };
-            wikirs_cli::run_operation(command, open_wiki(flag, discovery), output)
+            wikirs_cli::run_operation(command, open_wiki(flag, discovery, verbose), output)
         }
         Top::Config(ConfigCommand::Adopt { from, dry_run }) => wikirs_cli::run_adopt(
-            open_wiki(flag, Discovery::Cli),
+            open_wiki(flag, Discovery::Cli, verbose),
             from.as_deref(),
             dry_run,
             json,
@@ -52,20 +80,20 @@ fn main() -> ExitCode {
             );
             ExitCode::SUCCESS
         }
-        Top::Serve(args) => match open_wiki(flag, Discovery::Cli) {
+        Top::Serve(args) => match open_wiki(flag, Discovery::Cli, verbose) {
             Err(err) => print_error(&err, json),
             Ok(wiki) => run_serve(&wiki, &args),
         },
-        Top::Gui { page } => match open_wiki(flag, Discovery::Cli) {
+        Top::Gui { page } => match open_wiki(flag, Discovery::Cli, verbose) {
             Err(err) => print_error(&err, json),
             Ok(wiki) => run_gui(wiki, page),
         },
-        Top::Tui { page } => match open_wiki(flag, Discovery::Cli) {
+        Top::Tui { page } => match open_wiki(flag, Discovery::Cli, verbose) {
             Err(err) => print_error(&err, json),
             Ok(wiki) => run_tui(wiki, page.as_deref()),
         },
         // MCP clients start us with an unpredictable cwd: never walk up (wiki-selection.md).
-        Top::Mcp { read_only } => match open_wiki(flag, Discovery::Mcp) {
+        Top::Mcp { read_only } => match open_wiki(flag, Discovery::Mcp, verbose) {
             Err(err) => print_error(&err, json),
             Ok(wiki) => run_mcp(wiki, read_only),
         },
