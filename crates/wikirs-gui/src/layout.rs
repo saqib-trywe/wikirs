@@ -225,11 +225,9 @@ impl Layout<'_> {
                     o.text.push('#');
                     o.text.push_str(tag);
                 }),
-                Inline::Math { source, display } => mark(out, Mark::Math, |o| {
-                    let delim = if *display { "$$" } else { "$" };
-                    o.text.push_str(delim);
-                    o.text.push_str(source.trim());
-                    o.text.push_str(delim);
+                // Typeset as Unicode (x², α, a⁄b), like the TUI.
+                Inline::Math { source, .. } => mark(out, Mark::Math, |o| {
+                    o.text.push_str(&wikirs_ui::math::to_unicode(source));
                 }),
                 Inline::FootnoteRef { label } => {
                     mark(out, Mark::Muted, |o| {

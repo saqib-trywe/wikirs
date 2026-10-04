@@ -1,5 +1,6 @@
 //! What the GUI and TUI share, with no UI code (docs/spec/workspace.md):
 //! - [`form`]: the palette's form model, generated from Input schemas;
+//! - [`math`]: LaTeX math as Unicode, for both UIs;
 //! - [`outcome`]: an Operation's result or Plan as lines for a popup;
 //! - [`session`]: the open Page and how it reacts to saves and changes on disk
 //!   (process-model.md#open-page-changed-on-disk-gui-and-tui).
@@ -12,6 +13,7 @@ use std::{
 };
 
 pub mod form;
+pub mod math;
 pub mod outcome;
 pub mod session;
 

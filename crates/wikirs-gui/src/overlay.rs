@@ -39,6 +39,8 @@ pub enum Overlay {
         pages: Vec<(String, String)>,
     },
     Form(Box<FormPanel>),
+    Settings(Vec<crate::screens::Setting>),
+    Check(Vec<crate::screens::Diagnostic>),
 }
 
 impl Workbench {
@@ -240,6 +242,8 @@ impl Workbench {
                     .into_any_element()
             }
             Overlay::Form(panel) => Self::form_view(panel, &view, &theme, cx),
+            Overlay::Settings(settings) => Self::settings_view(&settings.clone(), cx),
+            Overlay::Check(diagnostics) => Self::check_view(&diagnostics.clone(), cx),
         };
         Some(
             div()

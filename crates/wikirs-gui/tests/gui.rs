@@ -250,6 +250,8 @@ fn overlay_kind(fx: &Fixture, cx: &mut VisualTestContext) -> &'static str {
         Some(Overlay::QuickOpen { .. }) => "quick open",
         Some(Overlay::TagPages { .. }) => "tag pages",
         Some(Overlay::Form(_)) => "form",
+        Some(Overlay::Settings(_)) => "settings",
+        Some(Overlay::Check(_)) => "check",
     })
 }
 
@@ -474,4 +476,67 @@ fn clicking_a_checkbox_ticks_the_task(cx: &mut TestAppContext) {
         std::fs::read_to_string(fx.file("t")).unwrap(),
         "- [ ] one\n"
     );
+}
+
+#[gpui::test]
+fn settings_check_and_attachments(cx: &mut TestAppContext) {
+    use wikirs_gui::overlay::Overlay;
+    let (fx, cx) = setup(cx);
+    // Settings: every setting, and Edit opens set_config filled in.
+    fx.view.update_in(cx, |wb, _, cx| wb.open_settings(cx));
+    cx.run_until_parked();
+    let keys = fx.view.read_with(cx, |wb, _| match &wb.overlay {
+        Some(Overlay::Settings(s)) => s.iter().map(|s| s.key.clone()).collect::<Vec<_>>(),
+        _ => unreachable!(),
+    });
+    assert!(keys.contains(&"links.syntax".to_string()), "{keys:?}");
+    fx.view.update_in(cx, |wb, window, cx| {
+        wb.open_form(
+            "set_config",
+            &json!({ "key": "links.syntax", "value": "wikilink", "scope": "wiki" }),
+            window,
+            cx,
+        );
+        wb.run_form(false, window, cx);
+        wb.run_form(true, window, cx);
+    });
+    cx.run_until_parked();
+    fx.view.update_in(cx, |wb, _, cx| wb.open_settings(cx));
+    let value = fx.view.read_with(cx, |wb, _| match &wb.overlay {
+        Some(Overlay::Settings(s)) => s
+            .iter()
+            .find(|s| s.key == "links.syntax")
+            .map(|s| (s.value.clone(), s.source.clone())),
+        _ => unreachable!(),
+    });
+    assert_eq!(value, Some((json!("wikilink"), "wiki".to_string())));
+
+    // Check: Page a's broken Link, and clicking it opens a.
+    fx.view.update_in(cx, |wb, window, cx| {
+        wb.open("b", window, cx);
+        wb.open_check(cx);
+    });
+    cx.run_until_parked();
+    let diagnostics = fx.view.read_with(cx, |wb, _| match &wb.overlay {
+        Some(Overlay::Check(d)) => d.clone(),
+        _ => unreachable!(),
+    });
+    assert!(
+        diagnostics
+            .iter()
+            .any(|d| d.kind == "broken_link" && d.page == "a"),
+        "{diagnostics:?}"
+    );
+
+    // Attachments: the open Page's own.
+    std::fs::create_dir_all(fx.dir.path().join("wiki/a")).unwrap();
+    std::fs::write(fx.dir.path().join("wiki/a/f.txt"), "x").unwrap();
+    fx.view.update_in(cx, |wb, window, cx| {
+        wb.overlay = None;
+        wb.session.run_json("rebuild_index", json!({})).unwrap();
+        wb.open("a", window, cx);
+    });
+    cx.run_until_parked();
+    let files = fx.view.read_with(cx, |wb, _| wb.attachments());
+    assert_eq!(files, ["a/f.txt"]);
 }

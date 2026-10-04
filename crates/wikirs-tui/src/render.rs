@@ -354,16 +354,14 @@ impl Renderer<'_> {
                         Span::styled(format!("#{tag}"), style.fg(Color::Magenta)),
                     );
                 }
-                Inline::Math { source, display } => {
-                    let delim = if *display { "$$" } else { "$" };
-                    push(
-                        lines,
-                        Span::styled(
-                            format!("{delim}{}{delim}", source.trim()),
-                            style.fg(Color::Green).italic(),
-                        ),
-                    );
-                }
+                // Typeset as Unicode (x², α, a⁄b), like the GUI.
+                Inline::Math { source, .. } => push(
+                    lines,
+                    Span::styled(
+                        wikirs_ui::math::to_unicode(source),
+                        style.fg(Color::Green).italic(),
+                    ),
+                ),
                 Inline::FootnoteRef { label } => {
                     push(lines, Span::styled(format!("[^{label}]"), style.dim()));
                 }

@@ -33,7 +33,12 @@ The generated ⌘K palette reaches every Operation. These also get their own UI:
 | `[[` autocomplete in the editor | `list_pages{path_prefix}` / `search` (through gpui-kit's `CompletionProvider`) |
 | Outline panel | `outline` |
 
-Everything else (config, attachments management, `check`, Index maintenance, `watch` log…) is palette-only for now.
+These also have their own screens:
+- **Settings** (breadcrumb bar): every setting with its value, scope and source (`get_config`); Edit opens `set_config` prefilled.
+- **Check** (breadcrumb bar): `check`'s diagnostics grouped by kind; clicking one opens its Page.
+- **Attachments** (right panel): the open Page's own (`list_attachments`). Click opens the file; Add, Move and Delete open their Operation's form as a dry run.
+
+Everything else (Index maintenance, the `watch` log…) is palette-only for now.
 
 ## Changed on disk
 

@@ -417,6 +417,7 @@ impl Workbench {
                         d.child(div().text_color(theme.danger).child("deleted on disk"))
                     }),
             )
+            .child(crate::screens::screen_buttons(cx))
             .child(
                 Button::new("mode")
                     .label(if self.source {
@@ -613,6 +614,7 @@ impl Workbench {
     }
 
     fn right(&self, cx: &mut Context<Self>) -> AnyElement {
+        let attachments = self.attachments_view(cx);
         let theme = cx.theme();
         let view = cx.entity();
         let mut panel = v_flex()
@@ -669,6 +671,7 @@ impl Workbench {
                     }),
             );
         }
+        panel = panel.child(section("Attachments", cx)).child(attachments);
         panel = panel.child(section("Outline", cx));
         for (level, text) in &page.outline {
             panel = panel.child(

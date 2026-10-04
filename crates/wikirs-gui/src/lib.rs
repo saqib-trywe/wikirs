@@ -14,6 +14,7 @@ pub mod form;
 pub mod layout;
 pub mod overlay;
 pub mod page;
+pub mod screens;
 pub mod workbench;
 
 use gpui_kit::{component::Root, *};

@@ -34,7 +34,7 @@ Parsed by pulldown-cmark in `wikirs-core`:
 | task lists | checkboxes: clicking one ticks it in the file (saved at once unless there are unsaved edits) | `[ ]` / `[x]` |
 | alerts | coloured callout with its label | bordered block with its label |
 | footnotes | superscript marker, with the list at the end | `[^1]`, with the list at the end |
-| math | styled source in v1 (typesetting later) | styled source |
+| math | Unicode (`x^2` → x², `\alpha` → α, `\frac{a}{b}` → a⁄b; unknown commands kept), styled | the same Unicode, styled |
 | code blocks (incl. mermaid) | syntax-highlighted | code block |
 | Links | clickable; Broken Links styled as broken | numbered `[n]`; Broken Links marked |
 | images / `![[attachment]]` | inline image (local image loading must work, see [gui.md](gui.md)) | the picture under its `[image: path]` line (kitty, iTerm2 or half-blocks), and it opens in the system viewer |
