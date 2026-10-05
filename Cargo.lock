@@ -9276,7 +9276,7 @@ dependencies = [
 
 [[package]]
 name = "wikirs"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "assert_cmd",
  "axum",
@@ -9300,7 +9300,7 @@ dependencies = [
 
 [[package]]
 name = "wikirs-cli"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "base64 0.23.1",
  "clap",
@@ -9312,7 +9312,7 @@ dependencies = [
 
 [[package]]
 name = "wikirs-core"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "base64 0.23.1",
  "blake3",
@@ -9336,7 +9336,7 @@ dependencies = [
 
 [[package]]
 name = "wikirs-gui"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "gpui-kit",
@@ -9350,7 +9350,7 @@ dependencies = [
 
 [[package]]
 name = "wikirs-http"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -9369,7 +9369,7 @@ dependencies = [
 
 [[package]]
 name = "wikirs-mcp"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "percent-encoding",
@@ -9382,7 +9382,7 @@ dependencies = [
 
 [[package]]
 name = "wikirs-tui"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "clap",
  "image",
@@ -9398,7 +9398,7 @@ dependencies = [
 
 [[package]]
 name = "wikirs-ui"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "serde_json",
  "similar",

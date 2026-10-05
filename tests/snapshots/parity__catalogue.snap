@@ -4,7 +4,7 @@ assertion_line: 893
 expression: "wikirs_core::catalogue()"
 ---
 {
-  "version": "0.1.0",
+  "version": "1.0.0",
   "operations": [
     {
       "name": "init",
